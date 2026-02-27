@@ -567,16 +567,14 @@ async def compare_images(req: CompareRequest):
             sample_crop=crop_b64(sample, x1, y1, rw, rh),
         ))
 
-    # ── Spelling check ─────────────────────────────────────────────────
+    # ── Spelling check (sample only) ────────────────────────────────────
     spelling_errors = []
     if req.check_spelling and HAS_OCR and HAS_SPELL:
         try:
-            spelling_errors = check_spelling_both(master, sample, req.spelling_language)
+            spelling_errors = check_spelling_in_image(sample, req.spelling_language, h, w)
             logger.info(f"Spelling check: {len(spelling_errors)} issues found")
 
             for sp_err in spelling_errors:
-                if sp_err.get('source') == 'master':
-                    continue
                 bb = sp_err['bbox']
                 sx1 = int(bb['x'] * w)
                 sy1 = int(bb['y'] * h)
@@ -586,17 +584,12 @@ async def compare_images(req: CompareRequest):
                 cv2.putText(annotated, "Aa", (sx1, sy1 - 4),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, SPELLING_COLOR_BGR, 1)
 
-            spell_start = len(differences) + 1
             for sp_err in spelling_errors:
-                if sp_err.get('category') == 'fixed':
-                    continue
                 sug_text = ', '.join(sp_err.get('suggestions', [])[:3])
-                cat_label = "Error introducido" if sp_err['category'] == 'introduced' else "Error preexistente"
-                desc = f"Ortografía: «{sp_err['word']}» — {cat_label}"
+                desc = f"Ortografía: «{sp_err['word']}»"
                 if sug_text:
                     desc += f" · Sugerencias: {sug_text}"
 
-                sev = "critical" if sp_err['category'] == 'introduced' else "minor"
                 bb = sp_err['bbox']
                 bx_px = int(bb['x'] * w)
                 by_px = int(bb['y'] * h)
@@ -606,11 +599,11 @@ async def compare_images(req: CompareRequest):
                 differences.append(Difference(
                     bbox=BBox(x=bb['x'], y=bb['y'], w=bb['w'], h=bb['h']),
                     type="spelling",
-                    severity_suggestion=sev,
+                    severity_suggestion="critical",
                     pixel_diff_percent=0,
                     color_delta_e=0,
                     description=desc,
-                    master_crop=crop_b64(master, bx_px, by_px, bw_px, bh_px) if bw_px > 0 and bh_px > 0 else "",
+                    master_crop="",
                     sample_crop=crop_b64(sample, bx_px, by_px, bw_px, bh_px) if bw_px > 0 and bh_px > 0 else "",
                 ))
         except Exception as e:
