@@ -234,3 +234,13 @@ body {
 
 /* ── Color swatch ──────────────────────────────────────────────────────────── */
 .color-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0; }
+
+/* ── OCR SVG overlay ──────────────────────────────────────────────────────── */
+.ocr-svg-wrapper { position: relative; }
+.ocr-svg-wrapper img { display: block; user-select: none; -webkit-user-drag: none; }
+.ocr-svg-wrapper svg { position: absolute; top: 0; left: 0; }
+
+/* ── OCR Carousel ─────────────────────────────────────────────────────────── */
+.ocr-carousel-viewport { overflow: hidden; }
+.ocr-carousel-track { display: flex; transition: transform 0.3s ease-out; }
+.ocr-carousel-slide { flex-shrink: 0; width: 100%; min-width: 100%; }
