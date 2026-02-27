@@ -110,7 +110,8 @@ async function runFullInspection(inspection, emitProgress) {
         zones,
         page: p + 1,
         check_spelling: inspection.checkSpelling ?? false,
-        spelling_language: inspection.spellingLanguage ?? 'es'
+        spelling_language: inspection.spellingLanguage ?? 'es',
+        spelling_level: inspection.spellingLevel ?? 50
       };
 
       // ── Stage 4: OCR and multilingual text review ────────────────────

@@ -197,6 +197,21 @@ export function mount(container, { onSuccess }) {
               </div>
               <p id="lang-limit-msg" class="hidden mt-2 font-mono text-xs text-brand-red">Máximo 3 idiomas permitidos.</p>
               <p id="lang-selected" class="mt-2 font-mono text-[10px] text-white/30">1 idioma(s) seleccionado(s)</p>
+              <div class="mt-6">
+                <div class="flex items-center justify-between mb-3">
+                  <label class="font-mono text-xs text-white/50" for="spellingLevel">Nivel de Revisión Ortográfica</label>
+                  <span id="spellingLevel-value" class="font-mono text-sm font-bold text-brand-yellow">50%</span>
+                </div>
+                <input type="range" id="spellingLevel" name="spellingLevel"
+                       min="0" max="100" value="50" step="5" class="slider-input w-full" />
+                <div class="flex justify-between mt-1.5">
+                  <span class="font-mono text-[10px] text-white/25">Permisivo</span>
+                  <span class="font-mono text-[10px] text-white/25">Estricto</span>
+                </div>
+                <p class="font-mono text-[10px] text-white/25 mt-1">
+                  Mayor nivel = mayor exigencia en la confianza OCR para reportar errores ortográficos. Solo se revisa el área de diseño (se excluyen guías de impresión).
+                </p>
+              </div>
             </div>
           </div>
 
@@ -477,9 +492,12 @@ export function mount(container, { onSuccess }) {
   const elTolDisplay = container.querySelector('#elementTolerance-value');
   const accSlider = container.querySelector('#accuracyLevel');
   const accDisplay = container.querySelector('#accuracyLevel-value');
+  const spellLevelSlider = container.querySelector('#spellingLevel');
+  const spellLevelDisplay = container.querySelector('#spellingLevel-value');
 
   elTolSlider.addEventListener('input', () => { elTolDisplay.textContent = `${elTolSlider.value}%`; });
   accSlider.addEventListener('input', () => { accDisplay.textContent = `${accSlider.value}%`; });
+  spellLevelSlider.addEventListener('input', () => { spellLevelDisplay.textContent = `${spellLevelSlider.value}%`; });
 
   // ── Form submission ─────────────────────────────────────────────────────
   const form = container.querySelector('#inspection-form');
@@ -532,7 +550,8 @@ export function mount(container, { onSuccess }) {
       await startInspection(inspectionId, {
         inspectionZones: zones,
         checkSpelling: spellCheck.checked,
-        spellingLanguage: getSelectedLanguages().join(',')
+        spellingLanguage: getSelectedLanguages().join(','),
+        spellingLevel: parseInt(spellLevelSlider.value, 10)
       });
       onSuccess({ inspectionId });
     } catch (err) {
