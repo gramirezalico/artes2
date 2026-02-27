@@ -128,9 +128,8 @@ export function mount(container, { inspection, onNewInspection, onHistory }) {
           <div id="panel-sample" class="workspace-panel flex-1 relative overflow-auto">
             <div class="absolute top-2 left-2 z-20 px-2 py-1 bg-black/60 font-mono text-[10px] text-brand-yellow/80">MUESTRA</div>
             ${sampleFile?.thumbnail
-              ? `<img id="img-sample" src="data:image/jpeg;base64,${sampleFile.thumbnail}" class="block" style="transform-origin:0 0" draggable="false"/>`
+              ? `<div id="sample-img-wrapper" style="position:relative;display:inline-block;transform-origin:0 0"><img id="img-sample" src="data:image/jpeg;base64,${sampleFile.thumbnail}" class="block" draggable="false"/><div id="markers-container" style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none"></div></div>`
               : `<div class="flex items-center justify-center h-full text-white/20 font-mono text-sm">Sin imagen</div>`}
-            <div id="markers-container" class="absolute inset-0 pointer-events-none" style="transform-origin:0 0"></div>
           </div>
           <!-- Diff panel (hidden by default) -->
           <div id="panel-diff" class="workspace-panel flex-1 relative overflow-auto hidden">
@@ -312,10 +311,12 @@ export function mount(container, { inspection, onNewInspection, onHistory }) {
 
   function applyZoom() {
     const t = `scale(${zoomLevel})`;
-    [imgMaster, imgSample, imgDiff, imgHeatmap].forEach(img => {
+    const sampleWrapper = container.querySelector('#sample-img-wrapper');
+    [imgMaster, imgDiff, imgHeatmap].forEach(img => {
       if (img) img.style.transform = t;
     });
-    if (markersContainer) markersContainer.style.transform = t;
+    if (sampleWrapper) sampleWrapper.style.transform = t;
+    else if (imgSample) imgSample.style.transform = t; // fallback: no thumbnail, no wrapper
     zoomLevelEl.textContent = `${Math.round(zoomLevel * 100)}%`;
   }
 
