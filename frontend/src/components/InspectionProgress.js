@@ -4,11 +4,12 @@
 import { streamProgress, getInspection } from '../hooks/useInspection.js';
 
 const STAGES = [
-  { num: 1, label: 'Convirtiendo documento maestro',     icon: '📄' },
-  { num: 2, label: 'Convirtiendo muestra',               icon: '🔬' },
+  { num: 1, label: 'Convirtiendo documento maestro',       icon: '📄' },
+  { num: 2, label: 'Convirtiendo muestra',                 icon: '🔬' },
   { num: 3, label: 'Comparación pixel por pixel',          icon: '🔍' },
-  { num: 4, label: 'Clasificación y revisión ortográfica', icon: '🎨' },
-  { num: 5, label: 'Generando resultados de inspección', icon: '📋' }
+  { num: 4, label: 'OCR y revisión de texto multiidioma',  icon: '🗣️' },
+  { num: 5, label: 'Clasificación de diferencias',         icon: '🎨' },
+  { num: 6, label: 'Generando resultados de inspección',   icon: '📋' }
 ];
 
 export function mount(container, { inspectionId, onComplete, onError }) {

@@ -145,10 +145,10 @@ export function mount(container, { onSuccess }) {
 
           <!-- Spelling check -->
           <div class="card">
-            <div class="section-label mb-5">Revisión Ortográfica</div>
+            <div class="section-label mb-5">Revisión OCR y Ortográfica</div>
             <p class="font-mono text-xs text-white/40 mb-5">
-              Extrae el texto con OCR y revisa la ortografía de las palabras detectadas.
-              Los errores introducidos en la muestra se marcan como críticos.
+              Extrae el texto con OCR y revisa la ortografía de las palabras detectadas, incluyendo palabras individuales.
+              Los errores introducidos en la muestra se marcan como críticos. Selecciona hasta 3 idiomas.
             </p>
             <div class="flex items-center gap-6 flex-wrap">
               <label class="flex items-center gap-3 cursor-pointer select-none" for="checkSpelling">
@@ -158,16 +158,45 @@ export function mount(container, { onSuccess }) {
                               peer-checked:translate-x-5 peer-checked:bg-brand-yellow
                               transition-all duration-200"></div>
                 </div>
-                <span class="font-mono text-sm text-white/70">Activar revisión ortográfica</span>
+                <span class="font-mono text-sm text-white/70">Activar revisión OCR y ortográfica</span>
               </label>
-              <div id="spelling-options" class="flex items-center gap-3" style="display:none">
-                <label class="font-mono text-xs text-white/40" for="spellingLanguage">Idioma:</label>
-                <select id="spellingLanguage" class="input-field w-44 py-2 text-sm">
-                  <option value="es" selected>Español</option>
-                  <option value="en">English</option>
-                  <option value="es,en">Español + English</option>
-                </select>
+            </div>
+            <div id="spelling-options" class="mt-5" style="display:none">
+              <label class="font-mono text-xs text-white/40 mb-3 block">Idiomas (máximo 3):</label>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2" id="language-grid">
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="es" class="lang-cb accent-brand-yellow" checked /> <span class="font-mono text-xs text-white/70">🇪🇸 Español</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="en" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇬🇧 English</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="pt" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇧🇷 Português</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="fr" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇫🇷 Français</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="de" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇩🇪 Deutsch</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="it" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇮🇹 Italiano</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="ru" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇷🇺 Русский</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="zh" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇨🇳 中文</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="ja" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇯🇵 日本語</span>
+                </label>
+                <label class="lang-option flex items-center gap-2 px-3 py-2 border border-white/10 cursor-pointer hover:border-brand-yellow/30 transition-colors select-none">
+                  <input type="checkbox" name="lang" value="ko" class="lang-cb accent-brand-yellow" /> <span class="font-mono text-xs text-white/70">🇰🇷 한국어</span>
+                </label>
               </div>
+              <p id="lang-limit-msg" class="hidden mt-2 font-mono text-xs text-brand-red">Máximo 3 idiomas permitidos.</p>
+              <p id="lang-selected" class="mt-2 font-mono text-[10px] text-white/30">1 idioma(s) seleccionado(s)</p>
             </div>
           </div>
 
@@ -411,6 +440,38 @@ export function mount(container, { onSuccess }) {
     spellOptions.style.display = on ? '' : 'none';
   });
 
+  // ── Language checkboxes (max 3) ─────────────────────────────────────────
+  const langGrid = container.querySelector('#language-grid');
+  const langLimitMsg = container.querySelector('#lang-limit-msg');
+  const langSelected = container.querySelector('#lang-selected');
+
+  function getSelectedLanguages() {
+    return Array.from(container.querySelectorAll('.lang-cb:checked')).map(cb => cb.value);
+  }
+
+  function updateLangUI() {
+    const selected = getSelectedLanguages();
+    const count = selected.length;
+    langSelected.textContent = `${count} idioma(s) seleccionado(s)`;
+    const overLimit = count > 3;
+    langLimitMsg.classList.toggle('hidden', !overLimit);
+    container.querySelectorAll('.lang-cb').forEach(cb => {
+      if (!cb.checked && count >= 3) {
+        cb.disabled = true;
+        cb.closest('.lang-option').classList.add('opacity-40');
+      } else {
+        cb.disabled = false;
+        cb.closest('.lang-option').classList.remove('opacity-40');
+      }
+      // Highlight selected
+      cb.closest('.lang-option').classList.toggle('border-brand-yellow/40', cb.checked);
+      cb.closest('.lang-option').classList.toggle('border-white/10', !cb.checked);
+    });
+  }
+
+  langGrid.addEventListener('change', updateLangUI);
+  updateLangUI();
+
   // ── Sliders ─────────────────────────────────────────────────────────────
   const elTolSlider = container.querySelector('#elementTolerance');
   const elTolDisplay = container.querySelector('#elementTolerance-value');
@@ -471,7 +532,7 @@ export function mount(container, { onSuccess }) {
       await startInspection(inspectionId, {
         inspectionZones: zones,
         checkSpelling: spellCheck.checked,
-        spellingLanguage: container.querySelector('#spellingLanguage').value
+        spellingLanguage: getSelectedLanguages().join(',')
       });
       onSuccess({ inspectionId });
     } catch (err) {

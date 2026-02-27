@@ -85,7 +85,7 @@ async function runFullInspection(inspection, emitProgress) {
     }
 
     // ── Stage 3: Pixel-level comparison (Python service) ──────────────────
-    emit(3, 'Comparación pixel por pixel…', 25);
+    emit(3, 'Comparación pixel por pixel…', 20);
     const pageCount = Math.min(masterResult.pageCount, sampleResult.pageCount);
     const allFindings = [];
     const diffImages = [];
@@ -95,7 +95,7 @@ async function runFullInspection(inspection, emitProgress) {
     let totalSsim = 0;
 
     for (let p = 0; p < pageCount; p++) {
-      const pct = 25 + Math.round((p / Math.max(1, pageCount)) * 35);
+      const pct = 20 + Math.round((p / Math.max(1, pageCount)) * 25);
       emit(3, `Comparando página ${p + 1} de ${pageCount}…`, pct);
 
       const zones = (inspection.inspectionZones || [])
@@ -112,6 +112,10 @@ async function runFullInspection(inspection, emitProgress) {
         check_spelling: inspection.checkSpelling ?? false,
         spelling_language: inspection.spellingLanguage ?? 'es'
       };
+
+      // ── Stage 4: OCR and multilingual text review ────────────────────
+      const ocrPct = 45 + Math.round((p / Math.max(1, pageCount)) * 10);
+      emit(4, `Revisión OCR de texto — página ${p + 1} de ${pageCount}…`, ocrPct);
 
       const response = await fetch(`${COMPARISON_URL}/compare`, {
         method: 'POST',
@@ -154,8 +158,8 @@ async function runFullInspection(inspection, emitProgress) {
       }
     }
 
-    // ── Stage 4: AI Enhancement (optional) ────────────────────────────────
-    emit(4, 'Clasificando diferencias…', 65);
+    // ── Stage 5: AI Enhancement (optional) ────────────────────────────────
+    emit(5, 'Clasificando diferencias…', 60);
 
     if (process.env.OPENAI_API_KEY && allFindings.length > 0 && allFindings.length <= 25) {
       try {
@@ -181,8 +185,8 @@ async function runFullInspection(inspection, emitProgress) {
       }
     }
 
-    // ── Stage 5: Save results ─────────────────────────────────────────────
-    emit(5, 'Guardando resultados…', 85);
+    // ── Stage 6: Save results ─────────────────────────────────────────────
+    emit(6, 'Guardando resultados…', 85);
     const avgSsim = pageCount > 0 ? totalSsim / pageCount : 0;
 
     const criticalCount = allFindings.filter(f => (f.severity || f.severity_suggestion) === 'critical').length;
@@ -215,7 +219,7 @@ async function runFullInspection(inspection, emitProgress) {
       }
     });
 
-    emit(5, 'Inspección completada.', 100);
+    emit(6, 'Inspección completada.', 100);
     emitProgress('done', { status: 'done', inspectionId: inspection._id });
   } catch (err) {
     console.error('[InspectionService] Inspection failed:', err.message);
