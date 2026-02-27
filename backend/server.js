@@ -10,6 +10,8 @@ const path = require('path');
 const fs = require('fs');
 
 const inspectionRoutes = require('./routes/inspection.routes');
+const authRoutes = require('./routes/auth.routes');
+const { requireAuth } = require('./middleware/auth.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -26,7 +28,8 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/inspection', inspectionRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/inspection', requireAuth, inspectionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
