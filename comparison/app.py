@@ -624,6 +624,11 @@ SEVERITY_COLORS_BGR = {
 }
 SPELLING_COLOR_BGR = (0, 140, 255)
 
+# Spelling level → OCR confidence mapping range
+SPELL_CONF_MIN = 20
+SPELL_CONF_MAX = 80
+SPELL_CONF_RANGE = SPELL_CONF_MAX - SPELL_CONF_MIN
+
 @app.post("/compare", response_model=CompareResponse)
 async def compare_images(req: CompareRequest):
     logger.info(f"Comparing page {req.page}, tol={req.tolerance}, acc={req.accuracy}, "
@@ -737,7 +742,8 @@ async def compare_images(req: CompareRequest):
     if req.check_spelling and HAS_OCR and HAS_SPELL:
         try:
             # Map spelling_level (0-100) to OCR confidence threshold (20-80)
-            min_conf = max(20, min(80, int(20 + (req.spelling_level / 100) * 60)))
+            min_conf = max(SPELL_CONF_MIN, min(SPELL_CONF_MAX,
+                          int(SPELL_CONF_MIN + (req.spelling_level / 100) * SPELL_CONF_RANGE)))
 
             # Crop margins to exclude print guides/marks before OCR
             master_design, mx_off, my_off = crop_design_area(master)
