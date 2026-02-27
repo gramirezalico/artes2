@@ -101,6 +101,7 @@ const InspectionSchema = new mongoose.Schema(
     // Spelling check options
     checkSpelling:    { type: Boolean, default: false },
     spellingLanguage: { type: String, default: 'es' },
+    spellingLevel:    { type: Number, min: 0, max: 100, default: 50 },
 
     masterFile:  { type: FileInfoSchema, required: true },
     sampleFile:  { type: FileInfoSchema, required: true },

@@ -90,6 +90,7 @@ class CompareRequest(BaseModel):
     page: int = 1
     check_spelling: bool = False
     spelling_language: str = "es"
+    spelling_level: int = 50
 
 class Difference(BaseModel):
     bbox: BBox
@@ -201,6 +202,72 @@ def b64_to_pil(b64_str: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(b64_str)))
 
 
+def align_sample_to_master(master: np.ndarray, sample: np.ndarray) -> np.ndarray:
+    """
+    Resize sample to match master dimensions preserving aspect ratio (pad if
+    needed), then apply ECC-based alignment to correct small translational
+    offsets caused by different scan/render resolutions.
+    """
+    h, w = master.shape[:2]
+    sh, sw = sample.shape[:2]
+
+    # 1. Aspect-ratio-preserving resize + centering
+    scale = min(w / sw, h / sh)
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LANCZOS4
+    new_sw, new_sh = int(sw * scale), int(sh * scale)
+    resized = cv2.resize(sample, (new_sw, new_sh), interpolation=interp)
+
+    if new_sw == w and new_sh == h:
+        aligned = resized
+    else:
+        # Determine background color from master edges for padding
+        border = np.concatenate([
+            master[0, :].reshape(-1, 3),
+            master[-1, :].reshape(-1, 3),
+            master[:, 0].reshape(-1, 3),
+            master[:, -1].reshape(-1, 3),
+        ])
+        bg = border.mean(axis=0).astype(np.uint8)
+        canvas = np.full((h, w, 3), bg, dtype=np.uint8)
+        y_off = (h - new_sh) // 2
+        x_off = (w - new_sw) // 2
+        canvas[y_off:y_off + new_sh, x_off:x_off + new_sw] = resized
+        aligned = canvas
+
+    # 2. ECC translational alignment for sub-pixel correction
+    try:
+        m_gray = cv2.cvtColor(master, cv2.COLOR_BGR2GRAY)
+        a_gray = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
+        warp_matrix = np.eye(2, 3, dtype=np.float32)
+        criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 50, 1e-4)
+        _, warp_matrix = cv2.findTransformECC(
+            m_gray, a_gray, warp_matrix, cv2.MOTION_TRANSLATION, criteria
+        )
+        aligned = cv2.warpAffine(
+            aligned, warp_matrix, (w, h),
+            flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+    except cv2.error:
+        pass  # ECC may fail on very different images; fall back to resize-only
+
+    return aligned
+
+
+def crop_design_area(img: np.ndarray, margin_pct: float = 0.03) -> tuple:
+    """
+    Return a cropped version of *img* that excludes the outer margin where
+    print guides, crop marks, and registration marks typically appear.
+
+    Returns (cropped_img, x_offset, y_offset) so callers can map coordinates
+    back to the original image.
+    """
+    h, w = img.shape[:2]
+    mx = max(1, int(w * margin_pct))
+    my = max(1, int(h * margin_pct))
+    return img[my:h - my, mx:w - mx], mx, my
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Color Analysis
 # ═══════════════════════════════════════════════════════════════════════════
@@ -295,7 +362,7 @@ def _clean_word(w: str) -> str:
     return re.sub(r'^[^\w]+|[^\w]+$', '', w, flags=re.UNICODE)
 
 
-def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: int) -> list:
+def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: int, min_confidence: int = 30) -> list:
     """OCR the image, spell-check extracted text, return misspelled words with bboxes."""
     if not HAS_OCR or not HAS_SPELL:
         return []
@@ -380,7 +447,7 @@ def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: i
         suggestions = list(dict.fromkeys(suggestions))[:5]
 
         conf = int(data['conf'][i]) if data['conf'][i] != '-1' else 0
-        if conf < 30:
+        if conf < min_confidence:
             continue
 
         bx = data['left'][i]
@@ -404,7 +471,7 @@ def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: i
     return errors
 
 
-def check_spelling_both(master: np.ndarray, sample: np.ndarray, language: str) -> list:
+def check_spelling_both(master: np.ndarray, sample: np.ndarray, language: str, min_confidence: int = 30) -> list:
     """
     Spell-check both documents. Classify errors:
       - In sample only → introduced error (critical)
@@ -412,8 +479,8 @@ def check_spelling_both(master: np.ndarray, sample: np.ndarray, language: str) -
       - In master only → was fixed (info)
     """
     h, w = master.shape[:2]
-    master_errors = check_spelling_in_image(master, language, h, w)
-    sample_errors = check_spelling_in_image(sample, language, h, w)
+    master_errors = check_spelling_in_image(master, language, h, w, min_confidence)
+    sample_errors = check_spelling_in_image(sample, language, h, w, min_confidence)
 
     master_words = {e['word'].lower() for e in master_errors}
     sample_words = {e['word'].lower() for e in sample_errors}
@@ -557,16 +624,22 @@ SEVERITY_COLORS_BGR = {
 }
 SPELLING_COLOR_BGR = (0, 140, 255)
 
+# Spelling level → OCR confidence mapping range
+SPELL_CONF_MIN = 20
+SPELL_CONF_MAX = 80
+SPELL_CONF_RANGE = SPELL_CONF_MAX - SPELL_CONF_MIN
+
 @app.post("/compare", response_model=CompareResponse)
 async def compare_images(req: CompareRequest):
     logger.info(f"Comparing page {req.page}, tol={req.tolerance}, acc={req.accuracy}, "
-                f"zones={len(req.zones)}, spell={req.check_spelling}, lang={req.spelling_language}")
+                f"zones={len(req.zones)}, spell={req.check_spelling}, lang={req.spelling_language}, "
+                f"spell_level={req.spelling_level}")
 
     master = b64_to_cv2(req.master_image)
     sample = b64_to_cv2(req.sample_image)
 
     h, w = master.shape[:2]
-    sample = cv2.resize(sample, (w, h), interpolation=cv2.INTER_LANCZOS4)
+    sample = align_sample_to_master(master, sample)
 
     m_gray = cv2.cvtColor(master, cv2.COLOR_BGR2GRAY)
     s_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
@@ -664,12 +737,39 @@ async def compare_images(req: CompareRequest):
             sample_crop=crop_b64(sample, x1, y1, rw, rh),
         ))
 
-    # ── Spelling check (sample only) ────────────────────────────────────
+    # ── Spelling check (dual: master vs sample, design area only) ──────
     spelling_errors = []
     if req.check_spelling and HAS_OCR and HAS_SPELL:
         try:
-            spelling_errors = check_spelling_in_image(sample, req.spelling_language, h, w)
-            logger.info(f"Spelling check: {len(spelling_errors)} issues found")
+            # Map spelling_level (0-100) to OCR confidence threshold (20-80)
+            min_conf = max(SPELL_CONF_MIN, min(SPELL_CONF_MAX,
+                          int(SPELL_CONF_MIN + (req.spelling_level / 100) * SPELL_CONF_RANGE)))
+
+            # Crop margins to exclude print guides/marks before OCR
+            master_design, mx_off, my_off = crop_design_area(master)
+            sample_design, _, _ = crop_design_area(sample)
+            dh, dw = master_design.shape[:2]
+
+            raw_errors = check_spelling_both(master_design, sample_design,
+                                             req.spelling_language, min_conf)
+
+            # Re-map bboxes from cropped coordinates to full-image coordinates
+            for err in raw_errors:
+                bb = err['bbox']
+                abs_x = bb['x'] * dw + mx_off
+                abs_y = bb['y'] * dh + my_off
+                abs_w = bb['w'] * dw
+                abs_h = bb['h'] * dh
+                err['bbox'] = {
+                    'x': round(abs_x / w, 4),
+                    'y': round(abs_y / h, 4),
+                    'w': round(abs_w / w, 4),
+                    'h': round(abs_h / h, 4),
+                }
+
+            # Only include sample-side errors (introduced and preexisting)
+            spelling_errors = [e for e in raw_errors if e.get('source') != 'master']
+            logger.info(f"Spelling check: {len(spelling_errors)} issues found (level={req.spelling_level}, conf>={min_conf})")
 
             for sp_err in spelling_errors:
                 bb = sp_err['bbox']
@@ -683,7 +783,11 @@ async def compare_images(req: CompareRequest):
 
             for sp_err in spelling_errors:
                 sug_text = ', '.join(sp_err.get('suggestions', [])[:3])
+                category = sp_err.get('category', 'introduced')
+                sev = sp_err.get('severity', 'critical')
                 desc = f"Ortografía: «{sp_err['word']}»"
+                if category == 'preexisting':
+                    desc += " (preexistente)"
                 if sug_text:
                     desc += f" · Sugerencias: {sug_text}"
 
@@ -696,7 +800,7 @@ async def compare_images(req: CompareRequest):
                 differences.append(Difference(
                     bbox=BBox(x=bb['x'], y=bb['y'], w=bb['w'], h=bb['h']),
                     type="spelling",
-                    severity_suggestion="critical",
+                    severity_suggestion=sev if sev in ("critical", "important", "minor") else "critical",
                     pixel_diff_percent=0,
                     color_delta_e=0,
                     description=desc,
@@ -918,8 +1022,7 @@ async def detect_elements(req: DetectElementsRequest):
     if req.master_image:
         master = b64_to_cv2(req.master_image)
         sample = b64_to_cv2(req.image)
-        h, w = master.shape[:2]
-        sample = cv2.resize(sample, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        sample = align_sample_to_master(master, sample)
 
         result = detector.detect_and_compare(master, sample)
         logger.info(

@@ -234,3 +234,81 @@ class TestDetectElementsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Image alignment and design area utilities
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestImageAlignment:
+
+    def test_align_same_size_returns_same_shape(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 400)
+        sample = master.copy()
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_align_different_size_returns_master_shape(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 400)
+        sample = np.ones((200, 200, 3), dtype=np.uint8) * 200
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_align_different_aspect_ratio(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 600)
+        sample = np.ones((300, 300, 3), dtype=np.uint8) * 200
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_crop_design_area_reduces_size(self):
+        from app import crop_design_area
+        img = _make_test_image(400, 400)
+        cropped, mx, my = crop_design_area(img, margin_pct=0.05)
+        assert cropped.shape[0] < img.shape[0]
+        assert cropped.shape[1] < img.shape[1]
+        assert mx > 0 and my > 0
+
+    def test_crop_design_area_offsets(self):
+        from app import crop_design_area
+        img = np.ones((100, 200, 3), dtype=np.uint8)
+        cropped, mx, my = crop_design_area(img, margin_pct=0.1)
+        assert mx == 20  # 10% of 200
+        assert my == 10  # 10% of 100
+        assert cropped.shape == (80, 160, 3)
+
+
+class TestCompareEndpoint:
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+        from app import app
+        return TestClient(app)
+
+    def test_compare_accepts_spelling_level(self, client):
+        master = _make_test_image()
+        sample = master.copy()
+        resp = client.post("/compare", json={
+            "master_image": _img_to_b64(master),
+            "sample_image": _img_to_b64(sample),
+            "check_spelling": False,
+            "spelling_level": 75,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "differences" in data
+        assert "overall_ssim" in data
+
+    def test_compare_different_sizes(self, client):
+        master = _make_test_image(400, 400)
+        sample = np.ones((200, 200, 3), dtype=np.uint8) * 200
+        resp = client.post("/compare", json={
+            "master_image": _img_to_b64(master),
+            "sample_image": _img_to_b64(sample),
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["overall_ssim"] >= 0
