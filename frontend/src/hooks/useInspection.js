@@ -1,12 +1,17 @@
 /**
  * useInspection.js — API wrapper for the QC Inspection backend.
  */
+import { getToken } from './useAuth.js';
+
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     ...options
   });
   const contentType = res.headers.get('content-type') || '';
@@ -21,8 +26,12 @@ async function request(path, options = {}) {
 
 /** Upload master + sample files and create inspection record. */
 export async function uploadInspection(formData) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}/api/inspection/upload`, {
     method: 'POST',
+    headers,
     body: formData
   });
   const data = await res.json();
@@ -75,7 +84,9 @@ export async function getReport(inspectionId) {
  * Returns an object with a close() method.
  */
 export function streamProgress(inspectionId, { onProgress, onDone, onError } = {}) {
-  const url = `${API_BASE}/api/inspection/${inspectionId}/stream`;
+  const token = getToken();
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+  const url = `${API_BASE}/api/inspection/${inspectionId}/stream${tokenParam}`;
   let es = null;
   let closed = false;
   let reconnectAttempts = 0;

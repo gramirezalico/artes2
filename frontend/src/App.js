@@ -2,21 +2,52 @@
  * App.js — Root shell: navigation + view routing
  *
  * Views:
+ *   login      → LoginScreen (Google Sign-In)
  *   form       → InspectionForm (new inspection)
  *   processing → InspectionProgress (SSE)
  *   workspace  → InspectionWorkspace (results)
  *   history    → InspectionHistory (list)
  */
+import { mount as mountLogin }      from './components/LoginScreen.js';
 import { mount as mountForm }       from './components/InspectionForm.js';
 import { mount as mountProgress }   from './components/InspectionProgress.js';
 import { mount as mountWorkspace }  from './components/InspectionWorkspace.js';
 import { mount as mountHistory }    from './components/InspectionHistory.js';
 import { getInspection }            from './hooks/useInspection.js';
+import { isAuthenticated, saveAuth, clearAuth, getUser } from './hooks/useAuth.js';
 
 let currentView = 'form';
 let viewContainer = null;
+let rootEl = null;
 
 export function mount(root) {
+  rootEl = root;
+
+  if (!isAuthenticated()) {
+    showLogin(root);
+    return;
+  }
+
+  showApp(root);
+}
+
+function showLogin(root) {
+  root.innerHTML = '';
+  const loginContainer = document.createElement('div');
+  loginContainer.className = 'min-h-screen';
+  root.appendChild(loginContainer);
+
+  mountLogin(loginContainer, {
+    onLogin: (data) => {
+      saveAuth(data);
+      showApp(root);
+    }
+  });
+}
+
+function showApp(root) {
+  const user = getUser();
+
   root.innerHTML = `
     <!-- Top nav bar -->
     <header class="fixed top-0 inset-x-0 z-50 h-12 bg-brand-surface/90 backdrop-blur-md border-b border-white/[0.06] flex items-center px-6">
@@ -35,6 +66,10 @@ export function mount(root) {
           <span class="hidden md:inline">Historial</span>
         </button>
       </nav>
+      <div class="flex items-center gap-2 ml-4">
+        ${user?.picture ? `<img src="${user.picture}" alt="" class="w-7 h-7 rounded-full" referrerpolicy="no-referrer" />` : ''}
+        <button id="btn-logout" class="text-white/50 hover:text-white text-xs font-mono transition-colors" title="Cerrar sesión">Salir</button>
+      </div>
     </header>
 
     <!-- Main content area -->
@@ -49,7 +84,14 @@ export function mount(root) {
   });
   root.querySelector('#nav-home').addEventListener('click', () => navigate('form'));
 
+  // Logout
+  root.querySelector('#btn-logout').addEventListener('click', () => {
+    clearAuth();
+    showLogin(rootEl);
+  });
+
   // Render initial view
+  currentView = 'form';
   renderView();
 }
 
