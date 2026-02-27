@@ -515,7 +515,11 @@ export function mount(container, { inspection, onNewInspection, onHistory }) {
     btn.innerHTML = '<span class="animate-spin inline-block">⟳</span> Generando…';
     btn.disabled = true;
     try {
-      const res = await fetch(`/api/inspection/${inspection._id}/report/pdf`);
+      const { getToken } = await import('../hooks/useAuth.js');
+      const token = getToken();
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/inspection/${inspection._id}/report/pdf`, { headers });
       if (!res.ok) throw new Error('Error al generar PDF');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

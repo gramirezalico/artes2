@@ -251,6 +251,38 @@ def extract_palette(img: np.ndarray, n_colors: int = 6) -> list:
 # Spelling Check
 # ═══════════════════════════════════════════════════════════════════════════
 
+MAX_MIXED_LANGUAGES = 3
+
+# Mapping from language codes used in the UI to Tesseract language codes
+LANG_TO_TESS = {
+    'es': 'spa', 'en': 'eng', 'fr': 'fra', 'de': 'deu', 'it': 'ita',
+    'pt': 'por', 'nl': 'nld', 'ru': 'rus', 'zh': 'chi_sim', 'ja': 'jpn',
+    'ko': 'kor', 'ar': 'ara', 'hi': 'hin', 'pl': 'pol', 'tr': 'tur',
+    'vi': 'vie', 'th': 'tha', 'sv': 'swe', 'da': 'dan', 'fi': 'fin',
+    'no': 'nor', 'cs': 'ces', 'ro': 'ron', 'hu': 'hun', 'el': 'ell',
+    'he': 'heb', 'id': 'ind', 'ms': 'msa', 'uk': 'ukr', 'ca': 'cat',
+    # Allow Tesseract native codes to pass through
+    'spa': 'spa', 'eng': 'eng', 'fra': 'fra', 'deu': 'deu', 'por': 'por',
+}
+
+# Mapping from language codes to SpellChecker language codes
+LANG_TO_SPELL = {
+    'es': 'es', 'en': 'en', 'fr': 'fr', 'de': 'de', 'it': 'it',
+    'pt': 'pt', 'ru': 'ru', 'ar': 'ar', 'pl': 'pl', 'tr': 'tr',
+    'spa': 'es', 'eng': 'en', 'fra': 'fr', 'deu': 'de', 'por': 'pt',
+}
+
+
+def build_tesseract_lang(languages: list) -> str:
+    """Convert a list of language codes to a Tesseract lang string (e.g. 'spa+eng')."""
+    tess_codes = []
+    for lang in languages:
+        code = LANG_TO_TESS.get(lang.strip(), lang.strip())
+        if code and code not in tess_codes:
+            tess_codes.append(code)
+    return '+'.join(tess_codes) if tess_codes else 'eng'
+
+
 _IGNORE_WORDS = {
     'mg', 'ml', 'kg', 'oz', 'gr', 'lb', 'no', 'si', 'el', 'la', 'en', 'de',
     'un', 'es', 'al', 'lo', 'su', 'por', 'con', 'del', 'los', 'las', 'una',
