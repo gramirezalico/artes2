@@ -227,7 +227,7 @@ class TestDetectElementsEndpoint:
         # Valid base64 encoding but not a valid image
         b64_invalid = base64.b64encode(b"this is not an image").decode("utf-8")
         resp = client.post("/detect-elements", json={"image": b64_invalid})
-        assert resp.status_code in (400, 422, 500)
+        assert resp.status_code == 400
 
     def test_health_endpoint(self, client):
         resp = client.get("/health")

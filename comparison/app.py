@@ -54,7 +54,7 @@ logger = logging.getLogger("qc-engine")
 
 app = FastAPI(title="QC Comparison Engine", version="2.0.0")
 
-# Shared detector instance
+# Default detector instance (re-used when min_area_ratio is the default)
 _element_detector = ElementDetector()
 
 # Pre-initialize spell checkers
@@ -856,7 +856,10 @@ async def detect_elements(req: DetectElementsRequest):
     Returns an inventory of elements: text blocks, images, logos, icons,
     CTAs, and generic graphic regions.
     """
-    detector = ElementDetector(min_area_ratio=req.min_area_ratio)
+    if req.min_area_ratio == 0.002:
+        detector = _element_detector
+    else:
+        detector = ElementDetector(min_area_ratio=req.min_area_ratio)
 
     if req.master_image:
         master = b64_to_cv2(req.master_image)
