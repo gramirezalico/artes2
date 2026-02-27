@@ -3,6 +3,7 @@ QC Print Inspection — Computer Vision Comparison Engine v2
 
 Pixel-level diff (SSIM + absdiff), color Delta-E, OCR text comparison,
 contour detection → precise bounding boxes, spelling check, PDF report.
+Custom convolution models for design element detection and inventory.
 """
 
 import os, io, base64, logging, math, textwrap, re
@@ -46,55 +47,15 @@ try:
 except Exception:
     HAS_PDF = False
 
+from models import ElementDetector
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 logger = logging.getLogger("qc-engine")
 
 app = FastAPI(title="QC Comparison Engine", version="2.0.0")
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Language Mappings — 10 supported languages, max 3 mixed
-# ═══════════════════════════════════════════════════════════════════════════
-
-# User code → Tesseract OCR language code
-LANG_TO_TESSERACT = {
-    "pt": "por",   # Português
-    "en": "eng",   # English
-    "es": "spa",   # Español
-    "fr": "fra",   # Français
-    "de": "deu",   # Deutsch
-    "zh": "chi_sim",  # 中文 (Simplified) — Tesseract-specific code
-    "ja": "jpn",   # 日本語
-    "it": "ita",   # Italiano
-    "ru": "rus",   # Русский
-    "ko": "kor",   # 한국어
-}
-
-# User code → pyspellchecker language code (None = not supported)
-LANG_TO_SPELL = {
-    "pt": "pt",
-    "en": "en",
-    "es": "es",
-    "fr": "fr",
-    "de": "de",
-    "zh": None,   # CJK not supported by pyspellchecker
-    "ja": None,
-    "it": "it",
-    "ru": "ru",
-    "ko": None,
-}
-
-MAX_MIXED_LANGUAGES = 3
-
-
-def build_tesseract_lang(languages: list) -> str:
-    """Build Tesseract language string from user language codes (max 3)."""
-    codes = []
-    for lang in languages[:MAX_MIXED_LANGUAGES]:
-        tess = LANG_TO_TESSERACT.get(lang.strip())
-        if tess:
-            codes.append(tess)
-    return "+".join(codes) if codes else "eng"
-
+# Default detector instance (re-used when min_area_ratio is the default)
+_element_detector = ElementDetector()
 
 # Pre-initialize spell checkers
 _spell_cache = {}
@@ -178,6 +139,36 @@ class ReportRequest(BaseModel):
     findings: List[ReportFinding] = []
     master_thumbnail: str = ""
     sample_thumbnail: str = ""
+
+
+class DetectElementsRequest(BaseModel):
+    image: str                     # base64 encoded image
+    master_image: str = ""         # optional second image for comparison
+    min_area_ratio: float = 0.002
+
+class DetectedElementModel(BaseModel):
+    element_type: str
+    confidence: float
+    bbox: BBox
+    area_percent: float
+    attributes: dict
+
+class ElementSummary(BaseModel):
+    master: int = 0
+    sample: int = 0
+
+class ElementChange(BaseModel):
+    element_type: str
+    master_count: int
+    sample_count: int
+    delta: int
+
+class DetectElementsResponse(BaseModel):
+    elements: List[DetectedElementModel] = []
+    master_elements: List[DetectedElementModel] = []
+    sample_elements: List[DetectedElementModel] = []
+    summary: dict = {}
+    changes: List[ElementChange] = []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -872,6 +863,68 @@ async def generate_report(req: ReportRequest):
             "Content-Disposition": f'attachment; filename="inspeccion_{req.product_id or "reporte"}.pdf"'
         }
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Design Element Detection (convolution models)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/detect-elements", response_model=DetectElementsResponse)
+async def detect_elements(req: DetectElementsRequest):
+    """
+    Detect and classify design elements in an image (or compare two images)
+    using custom convolution filter models.
+
+    Returns an inventory of elements: text blocks, images, logos, icons,
+    CTAs, and generic graphic regions.
+    """
+    if req.min_area_ratio == 0.002:
+        detector = _element_detector
+    else:
+        detector = ElementDetector(min_area_ratio=req.min_area_ratio)
+
+    if req.master_image:
+        master = b64_to_cv2(req.master_image)
+        sample = b64_to_cv2(req.image)
+        h, w = master.shape[:2]
+        sample = cv2.resize(sample, (w, h), interpolation=cv2.INTER_LANCZOS4)
+
+        result = detector.detect_and_compare(master, sample)
+        logger.info(
+            f"Element detection (compare): master={len(result['master_elements'])}, "
+            f"sample={len(result['sample_elements'])}, changes={len(result['changes'])}"
+        )
+        return DetectElementsResponse(
+            master_elements=[DetectedElementModel(
+                element_type=e["element_type"],
+                confidence=e["confidence"],
+                bbox=BBox(**e["bbox"]),
+                area_percent=e["area_percent"],
+                attributes=e["attributes"],
+            ) for e in result["master_elements"]],
+            sample_elements=[DetectedElementModel(
+                element_type=e["element_type"],
+                confidence=e["confidence"],
+                bbox=BBox(**e["bbox"]),
+                area_percent=e["area_percent"],
+                attributes=e["attributes"],
+            ) for e in result["sample_elements"]],
+            summary=result["summary"],
+            changes=[ElementChange(**c) for c in result["changes"]],
+        )
+    else:
+        img = b64_to_cv2(req.image)
+        elements = detector.detect(img)
+        logger.info(f"Element detection (single): {len(elements)} elements found")
+        return DetectElementsResponse(
+            elements=[DetectedElementModel(
+                element_type=e.element_type,
+                confidence=e.confidence,
+                bbox=BBox(**e.bbox),
+                area_percent=e.area_percent,
+                attributes=e.attributes,
+            ) for e in elements],
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
