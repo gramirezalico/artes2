@@ -51,6 +51,51 @@ logger = logging.getLogger("qc-engine")
 
 app = FastAPI(title="QC Comparison Engine", version="2.0.0")
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Language Mappings — 10 supported languages, max 3 mixed
+# ═══════════════════════════════════════════════════════════════════════════
+
+# User code → Tesseract OCR language code
+LANG_TO_TESSERACT = {
+    "pt": "por",   # Português
+    "en": "eng",   # English
+    "es": "spa",   # Español
+    "fr": "fra",   # Français
+    "de": "deu",   # Deutsch
+    "zh": "chi_sim",  # 中文 (Simplified)
+    "ja": "jpn",   # 日本語
+    "it": "ita",   # Italiano
+    "ru": "rus",   # Русский
+    "ko": "kor",   # 한국어
+}
+
+# User code → pyspellchecker language code (None = not supported)
+LANG_TO_SPELL = {
+    "pt": "pt",
+    "en": "en",
+    "es": "es",
+    "fr": "fr",
+    "de": "de",
+    "zh": None,   # CJK not supported by pyspellchecker
+    "ja": None,
+    "it": "it",
+    "ru": "ru",
+    "ko": None,
+}
+
+MAX_MIXED_LANGUAGES = 3
+
+
+def build_tesseract_lang(languages: list) -> str:
+    """Build Tesseract language string from user language codes (max 3)."""
+    codes = []
+    for lang in languages[:MAX_MIXED_LANGUAGES]:
+        tess = LANG_TO_TESSERACT.get(lang.strip())
+        if tess:
+            codes.append(tess)
+    return "+".join(codes) if codes else "eng"
+
+
 # Pre-initialize spell checkers
 _spell_cache = {}
 def get_spell_checker(lang: str) -> SpellChecker:
@@ -232,28 +277,37 @@ def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: i
     if not HAS_OCR or not HAS_SPELL:
         return []
 
+    # Build Tesseract lang string from selected languages
+    languages = [l.strip() for l in language.split(',') if l.strip()]
+    tess_lang = build_tesseract_lang(languages)
+
     try:
         pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         data = pytesseract.image_to_data(
-            pil_img, lang='spa+eng', config='--psm 6',
+            pil_img, lang=tess_lang, config='--psm 6',
             output_type=pytesseract.Output.DICT
         )
     except Exception as e:
         logger.warning(f"OCR failed for spelling: {e}")
         return []
 
-    languages = [l.strip() for l in language.split(',') if l.strip()]
+    # Build spell checkers for supported languages
     checkers = []
-    for lang in languages:
-        try:
-            checkers.append(get_spell_checker(lang))
-        except Exception:
-            pass
+    for lang in languages[:MAX_MIXED_LANGUAGES]:
+        spell_code = LANG_TO_SPELL.get(lang.strip())
+        if spell_code:
+            try:
+                checkers.append(get_spell_checker(spell_code))
+            except Exception:
+                pass
     if not checkers:
         try:
             checkers.append(get_spell_checker('es'))
         except Exception:
             return []
+
+    # Detect if any CJK language is selected
+    has_cjk = any(l.strip() in ('zh', 'ja', 'ko') for l in languages)
 
     errors = []
     seen_words = set()
@@ -264,16 +318,33 @@ def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: i
             continue
 
         word = _clean_word(raw)
-        if not word or len(word) < 3:
+        if not word:
             continue
 
-        if not re.match(r'^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ]+$', word):
+        # For CJK languages, allow single characters; otherwise min length 1 for standalone words
+        min_len = 1 if has_cjk else 1
+        if len(word) < min_len:
+            continue
+
+        # Accept letters from Latin, Cyrillic, CJK, and Korean scripts
+        if not re.match(
+            r'^[\w\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF'
+            r'\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]+$',
+            word, flags=re.UNICODE
+        ):
             continue
 
         lower = word.lower()
         if lower in _IGNORE_WORDS or lower in seen_words:
             continue
         seen_words.add(lower)
+
+        # Skip spell check for CJK characters (no spell checker available)
+        is_cjk_word = bool(re.match(
+            r'^[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]+$', word
+        ))
+        if is_cjk_word:
+            continue  # CJK words are detected by OCR but not spell-checked
 
         is_known = any(lower in ch or word in ch for ch in checkers)
         if is_known:
@@ -351,7 +422,7 @@ def check_spelling_both(master: np.ndarray, sample: np.ndarray, language: str) -
 # Difference Classification
 # ═══════════════════════════════════════════════════════════════════════════
 
-def classify_difference(master_crop: np.ndarray, sample_crop: np.ndarray, delta_e: float) -> tuple:
+def classify_difference(master_crop: np.ndarray, sample_crop: np.ndarray, delta_e: float, ocr_lang: str = "eng") -> tuple:
     if master_crop.size == 0 or sample_crop.size == 0:
         return "content", "minor", "Diferencia detectada"
 
@@ -379,11 +450,11 @@ def classify_difference(master_crop: np.ndarray, sample_crop: np.ndarray, delta_
         try:
             master_text = pytesseract.image_to_string(
                 Image.fromarray(cv2.cvtColor(master_crop, cv2.COLOR_BGR2RGB)),
-                lang='spa+eng', config='--psm 6'
+                lang=ocr_lang, config='--psm 6'
             ).strip()
             sample_text = pytesseract.image_to_string(
                 Image.fromarray(cv2.cvtColor(sample_crop, cv2.COLOR_BGR2RGB)),
-                lang='spa+eng', config='--psm 6'
+                lang=ocr_lang, config='--psm 6'
             ).strip()
             if master_text and sample_text and master_text != sample_text:
                 text_changed = True
@@ -524,6 +595,10 @@ async def compare_images(req: CompareRequest):
     heatmap_color = cv2.applyColorMap(combined, cv2.COLORMAP_JET)
     heatmap_blend = cv2.addWeighted(sample, 0.55, heatmap_color, 0.45, 0)
 
+    # Build Tesseract language string for OCR in difference classification
+    sel_languages = [l.strip() for l in req.spelling_language.split(',') if l.strip()]
+    ocr_lang = build_tesseract_lang(sel_languages[:MAX_MIXED_LANGUAGES])
+
     for idx, (bx, by, bw, bh) in enumerate(merged):
         pad = max(8, int(min(bw, bh) * 0.15))
         x1 = max(0, bx - pad)
@@ -543,7 +618,7 @@ async def compare_images(req: CompareRequest):
             cv2.cvtColor(s_crop, cv2.COLOR_BGR2GRAY)
         )) / 255.0 * 100)
 
-        diff_type, severity, description = classify_difference(m_crop, s_crop, delta_e)
+        diff_type, severity, description = classify_difference(m_crop, s_crop, delta_e, ocr_lang)
 
         color = SEVERITY_COLORS_BGR.get(severity, (200, 200, 200))
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 3)
