@@ -1,0 +1,13 @@
+# OpenAI API Key - Required for GPT-4o Vision analysis
+OPENAI_API_KEY=your_openai_api_key_here
+# MongoDB connection string
+MONGODB_URI=mongodb://mongodb:27017/pdfreviewer
+
+# Max file size per PDF upload (in MB)
+MAX_FILE_SIZE_MB=50
+
+# Node environment
+NODE_ENV=development
+
+# Frontend API URL (used by Vite at build time)
+VITE_API_URL=http://localhost:3001

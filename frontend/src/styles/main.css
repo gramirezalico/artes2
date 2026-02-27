@@ -1,0 +1,236 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ─────────────────────────────────────────────────── */
+:root {
+  --color-bg:       #0A0A0F;
+  --color-surface:  #13131A;
+  --color-card:     #1A1A24;
+  --color-border:   rgba(255, 255, 255, 0.08);
+  --color-yellow:   #E8FF47;
+  --color-red:      #FF4757;
+  --color-green:    #2ED573;
+  --color-blue:     #5352ED;
+  --color-muted:    #6B7280;
+  --transition:     200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-bg);
+  color: #F1F1F5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-surface); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Typography ────────────────────────────────────────────────────────────── */
+.font-display { font-family: 'Syne', system-ui, sans-serif; }
+
+/* ── Component layer ───────────────────────────────────────────────────────── */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-6 py-3 bg-brand-yellow text-brand-black
+           font-display font-bold text-sm tracking-widest uppercase rounded-none
+           transition-all duration-200 hover:bg-white hover:shadow-glow-yellow
+           active:scale-95 cursor-pointer border-0 outline-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-transparent text-white
+           font-mono text-sm border border-white/20 hover:border-white/50
+           transition-all duration-200 active:scale-95 cursor-pointer outline-none;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-transparent text-brand-red
+           font-mono text-sm border border-brand-red/30 hover:border-brand-red/80
+           hover:bg-brand-red/10 transition-all duration-200 active:scale-95 cursor-pointer;
+  }
+  .btn-sm {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-xs cursor-pointer
+           transition-all duration-150 active:scale-95 outline-none border;
+  }
+  .card {
+    @apply bg-brand-surface border border-white/[0.08] p-6;
+  }
+  .section-label {
+    @apply font-display font-bold uppercase tracking-[0.2em] text-xs text-white/40;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-full border;
+  }
+  .badge-green  { @apply bg-brand-green/10 border-brand-green/30 text-brand-green; }
+  .badge-red    { @apply bg-brand-red/10 border-brand-red/30 text-brand-red; }
+  .badge-yellow { @apply bg-brand-yellow/10 border-brand-yellow/30 text-brand-yellow; }
+  .badge-blue   { @apply bg-brand-blue/10 border-brand-blue/30 text-brand-blue; }
+  .badge-muted  { @apply bg-white/5 border-white/10 text-white/50; }
+  .badge-orange { background: rgba(255,140,0,0.1); border: 1px solid rgba(255,140,0,0.3); color: #FF8C00; }
+  .input-field {
+    @apply w-full bg-brand-card border border-white/10 text-white font-mono text-sm
+           px-4 py-3 outline-none placeholder-white/25
+           focus:border-brand-yellow/60 focus:ring-1 focus:ring-brand-yellow/20
+           transition-all duration-200;
+  }
+  .skeleton { @apply bg-white/10 animate-skeleton rounded; }
+}
+
+/* ── Drop zone ─────────────────────────────────────────────────────────────── */
+.drop-zone { transition: border-color var(--transition), background-color var(--transition); }
+.drop-zone.drag-over {
+  border-color: var(--color-yellow) !important;
+  background-color: rgba(232, 255, 71, 0.05) !important;
+}
+
+/* ── Verdict badges ────────────────────────────────────────────────────────── */
+.verdict-pass   { background: rgba(46,213,115,0.12); border: 1px solid rgba(46,213,115,0.4); color: #2ED573; }
+.verdict-review { background: rgba(232,255,71,0.12); border: 1px solid rgba(232,255,71,0.4); color: #E8FF47; }
+.verdict-fail   { background: rgba(255,71,87,0.12); border: 1px solid rgba(255,71,87,0.4); color: #FF4757; }
+
+/* ── Severity colors ───────────────────────────────────────────────────────── */
+.severity-critical  { @apply border-brand-red/60 bg-brand-red/10 text-brand-red; }
+.severity-important { @apply border-brand-yellow/60 bg-brand-yellow/10 text-brand-yellow; }
+.severity-minor     { @apply border-brand-blue/60 bg-brand-blue/10 text-brand-blue; }
+.severity-ignore    { @apply border-white/20 bg-white/5 text-white/40; }
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+.comparison-table { border-collapse: collapse; width: 100%; }
+.comparison-table th {
+  background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.12em; color: rgba(255,255,255,0.4); font-family: 'DM Mono', monospace;
+}
+.comparison-table td {
+  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-family: 'DM Mono', monospace; font-size: 13px;
+}
+.comparison-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* ── Slider ────────────────────────────────────────────────────────────────── */
+.slider-input {
+  -webkit-appearance: none; appearance: none;
+  height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; outline: none;
+}
+.slider-input:hover { background: rgba(255,255,255,0.12); }
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: #E8FF47; border: 2px solid #0D0D0D; cursor: pointer;
+  box-shadow: 0 0 8px rgba(232,255,71,0.3); transition: box-shadow 0.2s, transform 0.15s;
+}
+.slider-input::-webkit-slider-thumb:hover { box-shadow: 0 0 14px rgba(232,255,71,0.5); transform: scale(1.15); }
+.slider-input::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: #E8FF47;
+  border: 2px solid #0D0D0D; cursor: pointer; box-shadow: 0 0 8px rgba(232,255,71,0.3);
+}
+.slider-input::-moz-range-track { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+/* ── Workspace split view ──────────────────────────────────────────────────── */
+.workspace-panel {
+  position: relative; overflow: hidden; background: #111118;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.workspace-panel img {
+  transform-origin: 0 0; transition: transform 0.15s ease-out;
+  user-select: none; -webkit-user-drag: none;
+}
+
+/* ── Finding marker (overlay) ──────────────────────────────────────────────── */
+.finding-marker {
+  position: absolute; border: 2px solid; cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+  z-index: 10;
+}
+.finding-marker:hover { opacity: 1 !important; }
+.finding-marker.severity-critical  { border-color: var(--color-red);    background: rgba(255,71,87,0.15); }
+.finding-marker.severity-important { border-color: var(--color-yellow); background: rgba(232,255,71,0.12); }
+.finding-marker.severity-minor     { border-color: var(--color-blue);   background: rgba(83,82,237,0.15); }
+.finding-marker.severity-ignore    { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); }
+.finding-marker.active { border-width: 3px; box-shadow: 0 0 12px rgba(232,255,71,0.4); z-index: 20; }
+
+.finding-marker-label {
+  position: absolute; top: -20px; left: 0; font-size: 10px; font-family: 'DM Mono', monospace;
+  padding: 1px 5px; white-space: nowrap; font-weight: 700; border-radius: 2px;
+}
+
+/* ── Nav buttons ────────────────────────────────────────────────────────────── */
+.nav-btn {
+  @apply inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-xs text-white/50
+         hover:text-white hover:bg-white/[0.06] border border-transparent
+         transition-all duration-150 cursor-pointer;
+}
+.nav-btn.active {
+  @apply text-brand-yellow border-brand-yellow/30 bg-brand-yellow/5;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+.toolbar-btn {
+  @apply flex items-center justify-center w-9 h-9 border border-white/10 bg-white/[0.03]
+         text-white/60 hover:text-white hover:border-white/30 hover:bg-white/[0.06]
+         transition-all duration-150 cursor-pointer;
+}
+.toolbar-btn.active {
+  @apply border-brand-yellow/50 bg-brand-yellow/10 text-brand-yellow;
+}
+
+/* ── Findings list ─────────────────────────────────────────────────────────── */
+.finding-row {
+  @apply flex items-start gap-3 px-4 py-3 border-b border-white/[0.05] cursor-pointer
+         transition-all duration-150 hover:bg-white/[0.02];
+}
+.finding-row.active { @apply bg-brand-yellow/[0.05] border-l-2 border-l-brand-yellow; }
+
+/* ── Modal ─────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.85); backdrop-filter: blur(4px);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+.animate-fade-in { animation: fadeIn 0.35s ease-out forwards; }
+.animate-slide-up { animation: slideUp 0.35s ease-out forwards; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes skeleton { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 1s linear infinite; }
+
+/* ── Crop thumbnails ───────────────────────────────────────────────────────── */
+.crop-thumb {
+  width: 75px; height: 45px; object-fit: cover; border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.crop-thumb:hover {
+  transform: scale(2.5); z-index: 50; position: relative;
+  border-color: rgba(232,255,71,0.5);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+}
+
+/* ── Toggle switch ─────────────────────────────────────────────────────────── */
+.toggle-container { position: relative; display: flex; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); }
+.toggle-option {
+  padding: 6px 16px; font-size: 11px; font-family: 'DM Mono', monospace;
+  color: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.2s; user-select: none;
+  position: relative; z-index: 1;
+}
+.toggle-option.active { color: #0A0A0F; font-weight: 600; }
+.toggle-slider {
+  position: absolute; top: 2px; bottom: 2px; background: #E8FF47; border-radius: 1px;
+  transition: left 0.25s ease, width 0.25s ease; z-index: 0;
+}
+
+/* ── Spelling toggle ────────────────────────────────────────────────────── */
+.spelling-toggle { cursor: pointer; }
+.spelling-toggle:has(.peer:checked) { background: rgba(232,255,71,0.2); }
+.spelling-knob { pointer-events: none; }
+.sr-only:checked ~ .spelling-knob { transform: translateX(1.25rem); background: #E8FF47; }
+
+/* ── Color swatch ──────────────────────────────────────────────────────────── */
+.color-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0; }
