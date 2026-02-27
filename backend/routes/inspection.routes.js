@@ -85,6 +85,95 @@ function emitProgress(id, event, data) {
   }
 }
 
+// ─── POST /api/inspection/ocr ─────────────────────────────────────────────────
+// Standalone OCR + spell check on an uploaded image (full resolution)
+router.post(
+  '/ocr',
+  inspectionRateLimiter,
+  (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+      if (err) {
+        if (handleMulterError(err, res)) return;
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'Falta la imagen.' });
+
+      const ext = path.extname(file.originalname).toLowerCase();
+      const format = ['.pdf', '.tiff', '.tif', '.bmp', '.png', '.jpg', '.jpeg'].includes(ext)
+        ? ext.replace('.', '') : null;
+      if (!format) return res.status(400).json({ error: 'Formato no soportado.' });
+
+      // Convert to base64 at FULL resolution (no max dimension limit)
+      const { convertFileToImages } = require('../services/fileConverter.service');
+      const { imagesBase64 } = await convertFileToImages(file.filename, {
+        maxDim: 8192,  // Very high resolution for OCR accuracy
+        quality: 95,
+        dpi: 300       // 300 DPI for OCR accuracy
+      });
+
+      if (!imagesBase64 || imagesBase64.length === 0) {
+        return res.status(400).json({ error: 'No se pudo convertir la imagen.' });
+      }
+
+      // Use first page
+      const imageBase64 = imagesBase64[0];
+
+      // Parse zone if provided
+      let zone = null;
+      if (req.body.zone) {
+        try {
+          zone = typeof req.body.zone === 'string' ? JSON.parse(req.body.zone) : req.body.zone;
+        } catch (_) { /* ignore invalid zone */ }
+      }
+
+      const spellingLanguage = req.body.spellingLanguage || 'es';
+      const checkSpelling = req.body.checkSpelling !== 'false';
+
+      // Call Python OCR endpoint
+      const ocrRes = await fetch(`${COMPARISON_URL}/ocr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: imageBase64,
+          zone,
+          spelling_language: spellingLanguage,
+          check_spelling: checkSpelling
+        })
+      });
+
+      if (!ocrRes.ok) {
+        const errText = await ocrRes.text().catch(() => 'OCR failed');
+        throw new Error(errText);
+      }
+
+      const ocrData = await ocrRes.json();
+
+      // Clean up uploaded file
+      try { fs.unlinkSync(path.join(UPLOAD_DIR, file.filename)); } catch (_) {}
+
+      res.json({
+        fullText: ocrData.full_text,
+        words: ocrData.words,
+        spellingErrors: ocrData.spelling_errors,
+        annotatedImage: ocrData.annotated_image,
+        sourceImage: imageBase64
+      });
+    } catch (err) {
+      // Clean up on error
+      if (req.file) {
+        try { fs.unlinkSync(path.join(UPLOAD_DIR, req.file.filename)); } catch (_) {}
+      }
+      next(err);
+    }
+  }
+);
+
 // ─── POST /api/inspection/upload ──────────────────────────────────────────────
 router.post(
   '/upload',

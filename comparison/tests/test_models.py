@@ -31,7 +31,8 @@ def _make_test_image(width: int = 400, height: int = 400) -> np.ndarray:
     cv2.line(img, (320, 190), (320, 210), (50, 180, 50), 2)
 
     # Image-like textured region (random noise patch)
-    noise = np.random.randint(0, 255, (100, 150, 3), dtype=np.uint8)
+    rng = np.random.RandomState(42)
+    noise = rng.randint(0, 255, (100, 150, 3), dtype=np.uint8)
     img[250:350, 30:180] = noise
 
     # Logo-like compact graphic
@@ -39,6 +40,13 @@ def _make_test_image(width: int = 400, height: int = 400) -> np.ndarray:
     cv2.fillPoly(img, [pts], (180, 0, 180))
     cv2.polylines(img, [pts], True, (80, 0, 80), 2)
 
+    return img
+
+
+def _make_text_image(text: str = "Hello World Test", width: int = 400, height: int = 100) -> np.ndarray:
+    """Create a simple image with readable text for OCR testing."""
+    img = np.ones((height, width, 3), dtype=np.uint8) * 255  # white background
+    cv2.putText(img, text, (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2)
     return img
 
 

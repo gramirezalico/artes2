@@ -142,6 +142,29 @@ class ReportRequest(BaseModel):
     sample_thumbnail: str = ""
 
 
+class OcrRequest(BaseModel):
+    image: str                     # base64 encoded image (full resolution)
+    zone: Optional[Zone] = None    # optional region to crop before OCR
+    spelling_language: str = "es"
+    check_spelling: bool = True
+
+class OcrWord(BaseModel):
+    text: str
+    bbox: BBox
+    confidence: int
+
+class OcrSpellingError(BaseModel):
+    word: str
+    bbox: BBox
+    confidence: int
+    suggestions: list = []
+
+class OcrResponse(BaseModel):
+    full_text: str
+    words: List[OcrWord] = []
+    spelling_errors: List[OcrSpellingError] = []
+    annotated_image: str = ""      # base64 annotated crop/image
+
 class DetectElementsRequest(BaseModel):
     image: str                     # base64 encoded image
     master_image: str = ""         # optional second image for comparison
@@ -1060,6 +1083,156 @@ async def detect_elements(req: DetectElementsRequest):
                 attributes=e.attributes,
             ) for e in elements],
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Standalone OCR + Spell Check (full resolution)
+# ═══════════════════════════════════════════════════════════════════════════
+
+SPELLING_ERROR_COLOR_BGR = (0, 140, 255)  # orange for spelling errors
+
+@app.post("/ocr", response_model=OcrResponse)
+async def ocr_spell_check(req: OcrRequest):
+    """
+    Run OCR at full resolution on an image (or a selected region).
+    Returns extracted text, word-level bounding boxes, and spelling errors.
+    """
+    img = b64_to_cv2(req.image)
+    h, w = img.shape[:2]
+
+    # Crop to zone if specified (coordinates are normalized 0-1)
+    if req.zone:
+        zx = max(0, int(req.zone.x * w))
+        zy = max(0, int(req.zone.y * h))
+        zw = max(1, int(req.zone.w * w))
+        zh = max(1, int(req.zone.h * h))
+        img = img[zy:zy+zh, zx:zx+zw]
+        if img.size == 0:
+            raise HTTPException(400, "Selected zone is empty")
+        h, w = img.shape[:2]
+
+    if not HAS_OCR:
+        raise HTTPException(503, "OCR (Tesseract) is not available")
+
+    languages = [l.strip() for l in req.spelling_language.split(',') if l.strip()]
+    tess_lang = build_tesseract_lang(languages[:MAX_MIXED_LANGUAGES])
+
+    try:
+        pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        data = pytesseract.image_to_data(
+            pil_img, lang=tess_lang, config='--psm 6',
+            output_type=pytesseract.Output.DICT
+        )
+    except Exception as e:
+        logger.warning(f"OCR failed: {e}")
+        raise HTTPException(500, f"OCR processing failed: {e}")
+
+    # Collect all words
+    words = []
+    full_text_parts = []
+    for i in range(len(data['text'])):
+        raw = data['text'][i].strip()
+        if not raw:
+            continue
+        conf = int(data['conf'][i]) if data['conf'][i] != '-1' else 0
+        if conf < 20:
+            continue
+        bx = data['left'][i]
+        by = data['top'][i]
+        bw_px = data['width'][i]
+        bh_px = data['height'][i]
+        words.append(OcrWord(
+            text=raw,
+            bbox=BBox(
+                x=round(bx / w, 4),
+                y=round(by / h, 4),
+                w=round(bw_px / w, 4),
+                h=round(bh_px / h, 4)
+            ),
+            confidence=conf
+        ))
+        full_text_parts.append(raw)
+
+    full_text = ' '.join(full_text_parts)
+
+    # Spell checking
+    spelling_errors = []
+    if req.check_spelling and HAS_SPELL:
+        checkers = []
+        for lang in languages[:MAX_MIXED_LANGUAGES]:
+            spell_code = LANG_TO_SPELL.get(lang.strip())
+            if spell_code:
+                try:
+                    checkers.append(get_spell_checker(spell_code))
+                except Exception:
+                    pass
+        if not checkers:
+            try:
+                checkers.append(get_spell_checker('es'))
+            except Exception:
+                pass
+
+        seen_words = set()
+        for word_obj in words:
+            cleaned = _clean_word(word_obj.text)
+            if not cleaned or len(cleaned) < 2:
+                continue
+            if not re.match(
+                r'^[\w\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF'
+                r'\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]+$',
+                cleaned, flags=re.UNICODE
+            ):
+                continue
+            lower = cleaned.lower()
+            if lower in _IGNORE_WORDS or lower in seen_words:
+                continue
+            seen_words.add(lower)
+
+            # Skip CJK
+            if re.match(r'^[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]+$', cleaned):
+                continue
+
+            is_known = any(lower in ch or cleaned in ch for ch in checkers)
+            if is_known:
+                continue
+
+            suggestions = []
+            for checker in checkers:
+                candidates = checker.candidates(lower)
+                if candidates:
+                    suggestions.extend(list(candidates)[:3])
+            suggestions = list(dict.fromkeys(suggestions))[:5]
+
+            if word_obj.confidence < 30:
+                continue
+
+            spelling_errors.append(OcrSpellingError(
+                word=cleaned,
+                bbox=word_obj.bbox,
+                confidence=word_obj.confidence,
+                suggestions=suggestions
+            ))
+
+    # Build annotated image
+    annotated = img.copy()
+    for sp_err in spelling_errors:
+        bb = sp_err.bbox
+        sx1 = int(bb.x * w)
+        sy1 = int(bb.y * h)
+        sx2 = sx1 + int(bb.w * w)
+        sy2 = sy1 + int(bb.h * h)
+        cv2.rectangle(annotated, (sx1 - 2, sy1 - 2), (sx2 + 2, sy2 + 2), SPELLING_ERROR_COLOR_BGR, 2)
+        cv2.putText(annotated, "Aa", (sx1, sy1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, SPELLING_ERROR_COLOR_BGR, 1)
+
+    logger.info(f"OCR: {len(words)} words, {len(spelling_errors)} spelling errors, lang={req.spelling_language}")
+
+    return OcrResponse(
+        full_text=full_text,
+        words=words,
+        spelling_errors=spelling_errors,
+        annotated_image=cv2_to_b64(annotated, quality=90)
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
