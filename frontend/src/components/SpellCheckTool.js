@@ -2,10 +2,10 @@
  * SpellCheckTool.js — Standalone OCR & spell-check interface.
  *
  * Allows the user to:
- *   1. Upload an image/PDF
- *   2. Draw a rectangle to select a region (or use the full image)
+ *   1. Upload an image/PDF (drag-and-drop)
+ *   2. Draw SVG rectangles to select OCR regions on the PDF preview
  *   3. Choose languages
- *   4. Run OCR at full resolution and view extracted text + spelling errors
+ *   4. Run OCR at full resolution and view results in a carousel/slider
  */
 import { ocrSpellCheck } from '../hooks/useInspection.js';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -17,11 +17,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 export function mount(container, { onBack }) {
   let file = null;
-  let previewImg = null;
+  let previewSrc = null;
   let zone = null;
   let isDrawing = false;
   let drawStart = null;
   let isProcessing = false;
+  let currentSlide = 0;
+  let totalSlides = 0;
 
   container.innerHTML = `
     <div class="max-w-5xl mx-auto px-6 py-12">
@@ -31,13 +33,13 @@ export function mount(container, { onBack }) {
           Revisión de Ortografía por Zona
         </h1>
         <p class="font-mono text-sm text-white/40 mt-3">
-          Carga una imagen o PDF, selecciona el área a revisar y ejecuta OCR a resolución completa.
+          Carga un PDF o imagen, selecciona el área con el cursor y ejecuta OCR.
         </p>
       </div>
 
       <!-- File upload -->
       <div class="card mb-6">
-        <div class="section-label mb-4">Imagen a Analizar</div>
+        <div class="section-label mb-4">Archivo a Analizar</div>
         <div id="ocr-dropzone" class="drop-zone border-2 border-dashed border-white/15 p-8 text-center cursor-pointer
                     hover:border-brand-yellow/40 transition-all">
           <input type="file" id="ocr-file-input" class="hidden"
@@ -62,13 +64,13 @@ export function mount(container, { onBack }) {
         </div>
       </div>
 
-      <!-- Zone selection canvas -->
-      <div id="ocr-canvas-section" class="card mb-6" style="display:none">
+      <!-- SVG zone selection overlay -->
+      <div id="ocr-preview-section" class="card mb-6" style="display:none">
         <div class="flex items-center justify-between mb-3">
           <div>
             <div class="section-label mb-1">Seleccionar Zona (Opcional)</div>
             <p class="font-mono text-xs text-white/40">
-              Dibuja un rectángulo para enfocar el OCR en una zona específica. Si no dibujas zona, se analiza la imagen completa.
+              Dibuja un rectángulo sobre la imagen para enfocar el OCR en una zona específica.
             </p>
           </div>
           <button type="button" id="ocr-zone-clear"
@@ -76,8 +78,22 @@ export function mount(container, { onBack }) {
             ✕ Limpiar zona
           </button>
         </div>
-        <div class="relative border border-brand-yellow/20 bg-black/30 overflow-hidden inline-block">
-          <canvas id="ocr-canvas" class="block cursor-crosshair" style="max-width:100%;max-height:550px"></canvas>
+        <div id="ocr-preview-wrapper" class="ocr-svg-wrapper relative border border-brand-yellow/20 bg-black/30 inline-block select-none">
+          <img id="ocr-preview-img" class="block" style="max-width:100%;max-height:550px" alt="Vista previa del archivo" draggable="false" />
+          <svg id="ocr-svg-overlay" class="absolute inset-0 w-full h-full cursor-crosshair" style="pointer-events:auto">
+            <!-- Committed zone rectangle -->
+            <rect id="ocr-svg-zone" x="0" y="0" width="0" height="0"
+                  fill="rgba(232,255,71,0.10)" stroke="#E8FF47" stroke-width="2"
+                  visibility="hidden" />
+            <!-- Zone label -->
+            <text id="ocr-svg-zone-label" x="0" y="0"
+                  fill="#E8FF47" font-size="11" font-weight="bold" font-family="'DM Mono', monospace"
+                  visibility="hidden">OCR</text>
+            <!-- Temporary drawing rectangle -->
+            <rect id="ocr-svg-drawing" x="0" y="0" width="0" height="0"
+                  fill="rgba(232,255,71,0.08)" stroke="#E8FF47" stroke-width="2"
+                  stroke-dasharray="6 4" visibility="hidden" />
+          </svg>
         </div>
         <div class="mt-2">
           <span id="ocr-zone-status" class="font-mono text-[10px] text-white/30">
@@ -147,34 +163,62 @@ export function mount(container, { onBack }) {
         </div>
       </div>
 
-      <!-- Results -->
+      <!-- Results carousel -->
       <div id="ocr-results" class="hidden">
-        <!-- Annotated image -->
         <div class="card mb-6">
-          <div class="section-label mb-4">Imagen Anotada</div>
-          <div class="border border-white/10 bg-black/30 overflow-auto" style="max-height:500px">
-            <img id="ocr-annotated-img" class="block" style="max-width:100%" alt="Resultado OCR con errores ortográficos resaltados" />
-          </div>
-        </div>
-
-        <!-- Extracted text -->
-        <div class="card mb-6">
+          <!-- Carousel navigation header -->
           <div class="flex items-center justify-between mb-4">
-            <div class="section-label">Texto Extraído</div>
-            <button type="button" id="ocr-copy-btn" class="btn-sm border-white/20 text-white/50 hover:text-brand-yellow">
-              📋 Copiar
-            </button>
+            <div class="section-label" id="ocr-carousel-title">Resultados</div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="ocr-carousel-prev"
+                      class="btn-sm border-white/20 text-white/50 hover:text-brand-yellow disabled:opacity-30 disabled:cursor-not-allowed"
+                      disabled>
+                ← Anterior
+              </button>
+              <span id="ocr-carousel-indicator" class="font-mono text-xs text-white/40">1 / 3</span>
+              <button type="button" id="ocr-carousel-next"
+                      class="btn-sm border-white/20 text-white/50 hover:text-brand-yellow disabled:opacity-30 disabled:cursor-not-allowed">
+                Siguiente →
+              </button>
+            </div>
           </div>
-          <div id="ocr-text-output"
-               class="bg-brand-card border border-white/10 p-4 font-mono text-sm text-white/80 whitespace-pre-wrap max-h-64 overflow-y-auto">
-          </div>
-          <p id="ocr-word-count" class="mt-2 font-mono text-[10px] text-white/30"></p>
-        </div>
 
-        <!-- Spelling errors -->
-        <div id="ocr-spelling-section" class="card mb-6 hidden">
-          <div class="section-label mb-4">Errores Ortográficos Detectados</div>
-          <div id="ocr-spelling-list" class="space-y-2"></div>
+          <!-- Dot indicators -->
+          <div id="ocr-carousel-dots" class="flex items-center justify-center gap-2 mb-4"></div>
+
+          <!-- Slide container -->
+          <div class="ocr-carousel-viewport overflow-hidden" style="max-height:340px">
+            <div id="ocr-carousel-track" class="ocr-carousel-track flex transition-transform duration-300 ease-out" style="height:100%">
+              <!-- Slide 1: Annotated image -->
+              <div class="ocr-carousel-slide flex-shrink-0 w-full" data-slide="0">
+                <div class="section-label mb-3 text-xs">Imagen Anotada</div>
+                <div class="border border-white/10 bg-black/30 overflow-auto" style="max-height:280px">
+                  <img id="ocr-annotated-img" class="block" style="max-width:100%" alt="Resultado OCR con errores ortográficos resaltados" />
+                </div>
+              </div>
+
+              <!-- Slide 2: Extracted text -->
+              <div class="ocr-carousel-slide flex-shrink-0 w-full" data-slide="1">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="section-label text-xs">Texto Extraído</div>
+                  <button type="button" id="ocr-copy-btn" class="btn-sm border-white/20 text-white/50 hover:text-brand-yellow">
+                    📋 Copiar
+                  </button>
+                </div>
+                <div id="ocr-text-output"
+                     class="bg-brand-card border border-white/10 p-4 font-mono text-sm text-white/80 whitespace-pre-wrap overflow-y-auto"
+                     style="max-height:240px">
+                </div>
+                <p id="ocr-word-count" class="mt-2 font-mono text-[10px] text-white/30"></p>
+              </div>
+
+              <!-- Slide 3: Spelling errors -->
+              <div class="ocr-carousel-slide flex-shrink-0 w-full" data-slide="2">
+                <div class="section-label mb-3 text-xs">Errores Ortográficos</div>
+                <div id="ocr-spelling-list" class="space-y-2 overflow-y-auto" style="max-height:280px"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -188,9 +232,12 @@ export function mount(container, { onBack }) {
   const fileName = container.querySelector('#ocr-file-name');
   const fileClear = container.querySelector('#ocr-file-clear');
 
-  const canvasSection = container.querySelector('#ocr-canvas-section');
-  const canvas = container.querySelector('#ocr-canvas');
-  const ctx = canvas.getContext('2d');
+  const previewSection = container.querySelector('#ocr-preview-section');
+  const previewImgEl = container.querySelector('#ocr-preview-img');
+  const svgOverlay = container.querySelector('#ocr-svg-overlay');
+  const svgZone = container.querySelector('#ocr-svg-zone');
+  const svgZoneLabel = container.querySelector('#ocr-svg-zone-label');
+  const svgDrawing = container.querySelector('#ocr-svg-drawing');
   const zoneClear = container.querySelector('#ocr-zone-clear');
   const zoneStatus = container.querySelector('#ocr-zone-status');
 
@@ -205,8 +252,14 @@ export function mount(container, { onBack }) {
   const textOutput = container.querySelector('#ocr-text-output');
   const wordCount = container.querySelector('#ocr-word-count');
   const copyBtn = container.querySelector('#ocr-copy-btn');
-  const spellingSection = container.querySelector('#ocr-spelling-section');
   const spellingList = container.querySelector('#ocr-spelling-list');
+
+  const carouselTrack = container.querySelector('#ocr-carousel-track');
+  const carouselPrev = container.querySelector('#ocr-carousel-prev');
+  const carouselNext = container.querySelector('#ocr-carousel-next');
+  const carouselIndicator = container.querySelector('#ocr-carousel-indicator');
+  const carouselDots = container.querySelector('#ocr-carousel-dots');
+  const carouselTitle = container.querySelector('#ocr-carousel-title');
 
   // ── File handling ─────────────────────────────────────────────────────────
   dropzone.addEventListener('click', () => fileInput.click());
@@ -238,12 +291,12 @@ export function mount(container, { onBack }) {
 
   function clearFile() {
     file = null;
-    previewImg = null;
+    previewSrc = null;
     zone = null;
     fileInput.value = '';
     dropLabel.classList.remove('hidden');
     fileInfo.classList.add('hidden');
-    canvasSection.style.display = 'none';
+    previewSection.style.display = 'none';
     runBtn.disabled = true;
     resultsSection.classList.add('hidden');
   }
@@ -251,7 +304,6 @@ export function mount(container, { onBack }) {
   async function loadPreview(f) {
     try {
       const ext = f.name.split('.').pop().toLowerCase();
-      const img = new Image();
 
       if (ext === 'pdf') {
         const ab = await f.arrayBuffer();
@@ -262,102 +314,84 @@ export function mount(container, { onBack }) {
         off.width = viewport.width;
         off.height = viewport.height;
         await page.render({ canvasContext: off.getContext('2d'), viewport }).promise;
-        img.src = off.toDataURL('image/jpeg', 0.9);
+        previewSrc = off.toDataURL('image/jpeg', 0.9);
       } else {
-        img.src = URL.createObjectURL(f);
+        previewSrc = URL.createObjectURL(f);
       }
 
-      img.onload = () => {
-        previewImg = img;
-        sizeCanvas();
-        redrawCanvas();
-        canvasSection.style.display = '';
+      previewImgEl.onload = () => {
+        updateSvgZone();
+        previewSection.style.display = '';
       };
+      previewImgEl.src = previewSrc;
     } catch (err) {
       console.warn('[SpellCheckTool] Preview failed:', err);
-      previewImg = null;
-      canvasSection.style.display = 'none';
+      previewSrc = null;
+      previewSection.style.display = 'none';
     }
   }
 
-  function sizeCanvas() {
-    if (!previewImg) return;
-    const maxW = Math.min(800, canvasSection.clientWidth - 48);
-    const scale = maxW / previewImg.width;
-    canvas.width = previewImg.width * scale;
-    canvas.height = previewImg.height * scale;
-  }
-
-  function redrawCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (previewImg) {
-      ctx.drawImage(previewImg, 0, 0, canvas.width, canvas.height);
-    }
-    if (zone) {
-      const x = zone.x * canvas.width;
-      const y = zone.y * canvas.height;
-      const w = zone.w * canvas.width;
-      const h = zone.h * canvas.height;
-      ctx.strokeStyle = '#E8FF47';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = 'rgba(232, 255, 71, 0.10)';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#E8FF47';
-      ctx.font = 'bold 11px "DM Mono", monospace';
-      ctx.fillText('OCR', x + 4, y + 14);
-    }
-    updateZoneUI();
-  }
-
-  function updateZoneUI() {
-    if (zone) {
-      zoneStatus.textContent = 'Zona seleccionada — OCR se ejecutará solo en esta área.';
-      zoneClear.style.display = '';
-    } else {
-      zoneStatus.textContent = 'Sin zona — se analizará la imagen completa a resolución máxima.';
-      zoneClear.style.display = 'none';
-    }
-  }
-
-  function getCanvasCoords(e) {
-    const rect = canvas.getBoundingClientRect();
+  // ── SVG zone drawing ──────────────────────────────────────────────────────
+  function getSvgCoords(e) {
+    const rect = svgOverlay.getBoundingClientRect();
     return {
       x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
     };
   }
 
-  canvas.addEventListener('mousedown', (e) => {
-    if (!previewImg) return;
+  function updateSvgZone() {
+    if (zone) {
+      const pct = (v) => (v * 100).toFixed(2) + '%';
+      svgZone.setAttribute('x', pct(zone.x));
+      svgZone.setAttribute('y', pct(zone.y));
+      svgZone.setAttribute('width', pct(zone.w));
+      svgZone.setAttribute('height', pct(zone.h));
+      svgZone.setAttribute('visibility', 'visible');
+      svgZoneLabel.setAttribute('x', pct(zone.x));
+      svgZoneLabel.setAttribute('y', Math.max(3, zone.y * 100 - 0.5).toFixed(2) + '%');
+      svgZoneLabel.setAttribute('visibility', 'visible');
+      zoneStatus.textContent = 'Zona seleccionada — OCR se ejecutará solo en esta área.';
+      zoneClear.style.display = '';
+    } else {
+      svgZone.setAttribute('visibility', 'hidden');
+      svgZoneLabel.setAttribute('visibility', 'hidden');
+      zoneStatus.textContent = 'Sin zona — se analizará la imagen completa a resolución máxima.';
+      zoneClear.style.display = 'none';
+    }
+    svgDrawing.setAttribute('visibility', 'hidden');
+  }
+
+  svgOverlay.addEventListener('mousedown', (e) => {
+    if (!previewSrc) return;
+    e.preventDefault();
     isDrawing = true;
-    drawStart = getCanvasCoords(e);
+    drawStart = getSvgCoords(e);
   });
 
-  canvas.addEventListener('mousemove', (e) => {
+  svgOverlay.addEventListener('mousemove', (e) => {
     if (!isDrawing || !drawStart) return;
-    const cur = getCanvasCoords(e);
-    zone = null; // Clear while drawing
-    redrawCanvas();
+    e.preventDefault();
+    const cur = getSvgCoords(e);
     const x = Math.min(drawStart.x, cur.x);
     const y = Math.min(drawStart.y, cur.y);
     const w = Math.abs(cur.x - drawStart.x);
     const h = Math.abs(cur.y - drawStart.y);
-    const px = x * canvas.width, py = y * canvas.height;
-    const pw = w * canvas.width, ph = h * canvas.height;
-    ctx.strokeStyle = '#E8FF47';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(px, py, pw, ph);
-    ctx.fillStyle = 'rgba(232, 255, 71, 0.08)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.setLineDash([]);
+    const pct = (v) => (v * 100).toFixed(2) + '%';
+    svgDrawing.setAttribute('x', pct(x));
+    svgDrawing.setAttribute('y', pct(y));
+    svgDrawing.setAttribute('width', pct(w));
+    svgDrawing.setAttribute('height', pct(h));
+    svgDrawing.setAttribute('visibility', 'visible');
+    // Hide committed zone while drawing
+    svgZone.setAttribute('visibility', 'hidden');
+    svgZoneLabel.setAttribute('visibility', 'hidden');
   });
 
-  canvas.addEventListener('mouseup', (e) => {
+  svgOverlay.addEventListener('mouseup', (e) => {
     if (!isDrawing || !drawStart) return;
     isDrawing = false;
-    const end = getCanvasCoords(e);
+    const end = getSvgCoords(e);
     const x = Math.min(drawStart.x, end.x);
     const y = Math.min(drawStart.y, end.y);
     const w = Math.abs(end.x - drawStart.x);
@@ -366,17 +400,50 @@ export function mount(container, { onBack }) {
       zone = { x, y, w, h };
     }
     drawStart = null;
-    redrawCanvas();
+    updateSvgZone();
   });
 
-  canvas.addEventListener('mouseleave', () => {
-    if (isDrawing) { isDrawing = false; drawStart = null; redrawCanvas(); }
+  svgOverlay.addEventListener('mouseleave', () => {
+    if (isDrawing) { isDrawing = false; drawStart = null; updateSvgZone(); }
   });
 
   zoneClear.addEventListener('click', (e) => {
     e.preventDefault();
     zone = null;
-    redrawCanvas();
+    updateSvgZone();
+  });
+
+  // ── Carousel ──────────────────────────────────────────────────────────────
+  const slideTitles = ['Imagen Anotada', 'Texto Extraído', 'Errores Ortográficos'];
+
+  function goToSlide(index) {
+    currentSlide = Math.max(0, Math.min(index, totalSlides - 1));
+    carouselTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
+    carouselPrev.disabled = currentSlide === 0;
+    carouselNext.disabled = currentSlide === totalSlides - 1;
+    carouselIndicator.textContent = `${currentSlide + 1} / ${totalSlides}`;
+    carouselTitle.textContent = slideTitles[currentSlide] || 'Resultados';
+    // Update dot indicators
+    carouselDots.querySelectorAll('.ocr-dot').forEach((dot, i) => {
+      dot.classList.toggle('bg-brand-yellow', i === currentSlide);
+      dot.classList.toggle('bg-white/20', i !== currentSlide);
+    });
+  }
+
+  function initCarousel(count) {
+    totalSlides = count;
+    currentSlide = 0;
+    carouselDots.innerHTML = Array.from({ length: count }, (_, i) =>
+      `<button type="button" class="ocr-dot w-2 h-2 rounded-full transition-colors ${i === 0 ? 'bg-brand-yellow' : 'bg-white/20'}" data-dot="${i}"></button>`
+    ).join('');
+    goToSlide(0);
+  }
+
+  carouselPrev.addEventListener('click', () => goToSlide(currentSlide - 1));
+  carouselNext.addEventListener('click', () => goToSlide(currentSlide + 1));
+  carouselDots.addEventListener('click', (e) => {
+    const dot = e.target.closest('.ocr-dot');
+    if (dot) goToSlide(Number(dot.dataset.dot));
   });
 
   // ── Language grid ─────────────────────────────────────────────────────────
@@ -425,23 +492,23 @@ export function mount(container, { onBack }) {
 
       const result = await ocrSpellCheck(formData);
 
-      // Show results
+      // Show results carousel
       resultsSection.classList.remove('hidden');
+      initCarousel(3);
 
-      // Annotated image
+      // Slide 1: Annotated image
       if (result.annotatedImage) {
         annotatedImg.src = `data:image/jpeg;base64,${result.annotatedImage}`;
       }
 
-      // Extracted text
+      // Slide 2: Extracted text
       textOutput.textContent = result.fullText || '(Sin texto detectado)';
       const wc = (result.words || []).length;
       wordCount.textContent = `${wc} palabra(s) detectada(s)`;
 
-      // Spelling errors
+      // Slide 3: Spelling errors
       const errors = result.spellingErrors || [];
       if (errors.length > 0) {
-        spellingSection.classList.remove('hidden');
         spellingList.innerHTML = errors.map((err, i) => `
           <div class="flex items-start gap-3 p-3 border border-brand-red/20 bg-brand-red/5">
             <span class="font-mono text-xs text-brand-red font-bold mt-0.5">${i + 1}</span>
@@ -459,7 +526,6 @@ export function mount(container, { onBack }) {
           </div>
         `).join('');
       } else {
-        spellingSection.classList.remove('hidden');
         spellingList.innerHTML = `
           <div class="p-4 border border-brand-green/20 bg-brand-green/5 text-center">
             <p class="font-mono text-sm text-brand-green">✓ No se encontraron errores ortográficos</p>
