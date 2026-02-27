@@ -349,7 +349,7 @@ export function mount(container, { onBack }) {
       svgZone.setAttribute('height', pct(zone.h));
       svgZone.setAttribute('visibility', 'visible');
       svgZoneLabel.setAttribute('x', pct(zone.x));
-      svgZoneLabel.setAttribute('y', (zone.y * 100 - 0.5).toFixed(2) + '%');
+      svgZoneLabel.setAttribute('y', Math.max(3, zone.y * 100 - 0.5).toFixed(2) + '%');
       svgZoneLabel.setAttribute('visibility', 'visible');
       zoneStatus.textContent = 'Zona seleccionada — OCR se ejecutará solo en esta área.';
       zoneClear.style.display = '';
@@ -514,7 +514,7 @@ export function mount(container, { onBack }) {
             <span class="font-mono text-xs text-brand-red font-bold mt-0.5">${i + 1}</span>
             <div class="flex-1 min-w-0">
               <p class="font-mono text-sm text-white">
-                <span class="text-brand-red font-bold">\u00AB${escapeHtml(err.word)}\u00BB</span>
+                <span class="text-brand-red font-bold">«${escapeHtml(err.word)}»</span>
                 <span class="text-white/30 text-xs ml-2">confianza: ${err.confidence}%</span>
               </p>
               ${err.suggestions && err.suggestions.length > 0
