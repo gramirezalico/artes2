@@ -13,6 +13,7 @@ import { mount as mountForm }       from './components/InspectionForm.js';
 import { mount as mountProgress }   from './components/InspectionProgress.js';
 import { mount as mountWorkspace }  from './components/InspectionWorkspace.js';
 import { mount as mountHistory }    from './components/InspectionHistory.js';
+import { mount as mountSpellCheck } from './components/SpellCheckTool.js';
 import { getInspection }            from './hooks/useInspection.js';
 import { isAuthenticated, saveAuth, clearAuth, getUser } from './hooks/useAuth.js';
 
@@ -65,6 +66,10 @@ function showApp(root) {
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10M2 7h10M2 11h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
           <span class="hidden md:inline">Historial</span>
         </button>
+        <button class="nav-btn" data-nav="spellcheck">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h3l2 5 3-10 2 5h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="hidden md:inline">OCR</span>
+        </button>
       </nav>
       <div class="flex items-center gap-2 ml-4">
         ${user?.picture ? `<img src="${user.picture}" alt="" class="w-7 h-7 rounded-full" referrerpolicy="no-referrer" />` : ''}
@@ -99,7 +104,8 @@ function updateNav() {
   document.querySelectorAll('[data-nav]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.nav === currentView ||
       (currentView === 'processing' && btn.dataset.nav === 'form') ||
-      (currentView === 'workspace' && btn.dataset.nav === 'form'));
+      (currentView === 'workspace' && btn.dataset.nav === 'form') ||
+      (currentView === 'spellcheck' && btn.dataset.nav === 'spellcheck'));
   });
 }
 
@@ -169,6 +175,12 @@ function renderView(data) {
           }
         },
         onNewInspection: () => navigate('form')
+      });
+      break;
+
+    case 'spellcheck':
+      mountSpellCheck(viewContainer, {
+        onBack: () => navigate('form')
       });
       break;
 

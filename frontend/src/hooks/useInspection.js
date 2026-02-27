@@ -78,6 +78,21 @@ export async function getReport(inspectionId) {
   return request(`/api/inspection/${inspectionId}/report`);
 }
 
+/** Standalone OCR + spell check on an uploaded image. */
+export async function ocrSpellCheck(formData) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/inspection/ocr`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'OCR failed');
+  return data;
+}
+
 /** SSE stream for inspection progress. */
 /**
  * SSE stream with auto-reconnect and polling fallback.

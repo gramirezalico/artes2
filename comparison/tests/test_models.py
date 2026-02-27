@@ -31,7 +31,8 @@ def _make_test_image(width: int = 400, height: int = 400) -> np.ndarray:
     cv2.line(img, (320, 190), (320, 210), (50, 180, 50), 2)
 
     # Image-like textured region (random noise patch)
-    noise = np.random.randint(0, 255, (100, 150, 3), dtype=np.uint8)
+    rng = np.random.RandomState(42)
+    noise = rng.randint(0, 255, (100, 150, 3), dtype=np.uint8)
     img[250:350, 30:180] = noise
 
     # Logo-like compact graphic
@@ -39,6 +40,13 @@ def _make_test_image(width: int = 400, height: int = 400) -> np.ndarray:
     cv2.fillPoly(img, [pts], (180, 0, 180))
     cv2.polylines(img, [pts], True, (80, 0, 80), 2)
 
+    return img
+
+
+def _make_text_image(text: str = "Hello World Test", width: int = 400, height: int = 100) -> np.ndarray:
+    """Create a simple image with readable text for OCR testing."""
+    img = np.ones((height, width, 3), dtype=np.uint8) * 255  # white background
+    cv2.putText(img, text, (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2)
     return img
 
 
@@ -234,3 +242,97 @@ class TestDetectElementsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OCR endpoint integration tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestOcrEndpoint:
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+        from app import app
+        return TestClient(app)
+
+    def test_ocr_basic(self, client):
+        """OCR endpoint returns valid response for a text image."""
+        img = _make_text_image("Hello World")
+        b64 = _img_to_b64(img)
+        resp = client.post("/ocr", json={
+            "image": b64,
+            "spelling_language": "en",
+            "check_spelling": True
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "full_text" in data
+        assert "words" in data
+        assert "spelling_errors" in data
+        assert "annotated_image" in data
+        assert isinstance(data["words"], list)
+        assert isinstance(data["spelling_errors"], list)
+
+    def test_ocr_with_zone(self, client):
+        """OCR endpoint respects zone selection."""
+        img = _make_text_image("Hello World", width=600, height=200)
+        b64 = _img_to_b64(img)
+        resp = client.post("/ocr", json={
+            "image": b64,
+            "zone": {"x": 0.0, "y": 0.0, "w": 0.5, "h": 1.0},
+            "spelling_language": "en",
+            "check_spelling": False
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "full_text" in data
+        assert isinstance(data["annotated_image"], str)
+        assert len(data["annotated_image"]) > 0
+
+    def test_ocr_no_spell_check(self, client):
+        """OCR endpoint works with spell checking disabled."""
+        img = _make_text_image("Testing")
+        b64 = _img_to_b64(img)
+        resp = client.post("/ocr", json={
+            "image": b64,
+            "spelling_language": "en",
+            "check_spelling": False
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["spelling_errors"] == []
+
+    def test_ocr_invalid_image(self, client):
+        """OCR endpoint returns error for invalid image."""
+        b64_invalid = base64.b64encode(b"not an image").decode("utf-8")
+        resp = client.post("/ocr", json={
+            "image": b64_invalid,
+            "spelling_language": "en"
+        })
+        assert resp.status_code == 400
+
+    def test_ocr_empty_zone(self, client):
+        """OCR endpoint returns error for empty zone."""
+        img = _make_text_image("Hello")
+        b64 = _img_to_b64(img)
+        resp = client.post("/ocr", json={
+            "image": b64,
+            "zone": {"x": 0.99, "y": 0.99, "w": 0.001, "h": 0.001},
+            "spelling_language": "en"
+        })
+        # Should either succeed (tiny region) or return 400
+        assert resp.status_code in (200, 400)
+
+    def test_ocr_multiple_languages(self, client):
+        """OCR endpoint accepts multiple languages."""
+        img = _make_text_image("Hola Mundo")
+        b64 = _img_to_b64(img)
+        resp = client.post("/ocr", json={
+            "image": b64,
+            "spelling_language": "es,en",
+            "check_spelling": True
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "full_text" in data
