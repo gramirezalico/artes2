@@ -43,7 +43,7 @@ export function mount(container, { onBack }) {
           <input type="file" id="ocr-file-input" class="hidden"
                  accept=".pdf,.tiff,.tif,.bmp,.png,.jpg,.jpeg" />
           <div id="ocr-drop-label">
-            <svg class="mx-auto mb-3 text-white/30" width="36" height="36" viewBox="0 0 24 24" fill="none">
+            <svg class="mx-auto mb-3 text-white/30" width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"
                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -137,7 +137,7 @@ export function mount(container, { onBack }) {
         </div>
         <div class="flex items-center gap-4">
           <button type="button" id="ocr-run-btn" class="btn-primary" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M2 2h5l2 2h5v10H2V2z" stroke="currentColor" stroke-width="1.5"/>
               <path d="M5 10h6M5 7.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
             </svg>
@@ -153,7 +153,7 @@ export function mount(container, { onBack }) {
         <div class="card mb-6">
           <div class="section-label mb-4">Imagen Anotada</div>
           <div class="border border-white/10 bg-black/30 overflow-auto" style="max-height:500px">
-            <img id="ocr-annotated-img" class="block" style="max-width:100%" alt="Annotated" />
+            <img id="ocr-annotated-img" class="block" style="max-width:100%" alt="Resultado OCR con errores ortográficos resaltados" />
           </div>
         </div>
 

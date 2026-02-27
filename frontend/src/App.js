@@ -67,7 +67,7 @@ function showApp(root) {
           <span class="hidden md:inline">Historial</span>
         </button>
         <button class="nav-btn" data-nav="spellcheck">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h3l2 5 3-10 2 5h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 7h3l2 5 3-10 2 5h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="hidden md:inline">OCR</span>
         </button>
       </nav>
