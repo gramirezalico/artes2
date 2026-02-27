@@ -11,3 +11,12 @@ NODE_ENV=development
 
 # Frontend API URL (used by Vite at build time)
 VITE_API_URL=http://localhost:3001
+
+# Google OAuth Client ID (from Google Cloud Console)
+GOOGLE_CLIENT_ID=your_google_client_id_here
+
+# JWT secret for signing session tokens (use a strong random value in production)
+JWT_SECRET=your_jwt_secret_here
+
+# Frontend Google Client ID (used by Vite at build time)
+VITE_GOOGLE_CLIENT_ID=your_google_client_id_here

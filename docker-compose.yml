@@ -46,6 +46,8 @@ services:
       PORT: 3003
       NODE_ENV: ${NODE_ENV:-production}
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      JWT_SECRET: ${JWT_SECRET}
     volumes:
       - uploads-data:/app/uploads
     healthcheck:
@@ -61,6 +63,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ""
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     restart: unless-stopped
     ports:
       - "3002:3000"
