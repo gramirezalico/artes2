@@ -62,7 +62,7 @@ LANG_TO_TESSERACT = {
     "es": "spa",   # Español
     "fr": "fra",   # Français
     "de": "deu",   # Deutsch
-    "zh": "chi_sim",  # 中文 (Simplified)
+    "zh": "chi_sim",  # 中文 (Simplified) — Tesseract-specific code
     "ja": "jpn",   # 日本語
     "it": "ita",   # Italiano
     "ru": "rus",   # Русский
@@ -321,9 +321,8 @@ def check_spelling_in_image(img: np.ndarray, language: str, img_h: int, img_w: i
         if not word:
             continue
 
-        # For CJK languages, allow single characters; otherwise min length 1 for standalone words
-        min_len = 1 if has_cjk else 1
-        if len(word) < min_len:
+        # Allow standalone/individual words (min length 1 for all languages including CJK single characters)
+        if len(word) < 1:
             continue
 
         # Accept letters from Latin, Cyrillic, CJK, and Korean scripts
