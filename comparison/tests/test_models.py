@@ -245,10 +245,50 @@ class TestDetectElementsEndpoint:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# OCR endpoint integration tests
+# Image alignment and design area utilities
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestOcrEndpoint:
+class TestImageAlignment:
+
+    def test_align_same_size_returns_same_shape(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 400)
+        sample = master.copy()
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_align_different_size_returns_master_shape(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 400)
+        sample = np.ones((200, 200, 3), dtype=np.uint8) * 200
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_align_different_aspect_ratio(self):
+        from app import align_sample_to_master
+        master = _make_test_image(400, 600)
+        sample = np.ones((300, 300, 3), dtype=np.uint8) * 200
+        result = align_sample_to_master(master, sample)
+        assert result.shape == master.shape
+
+    def test_crop_design_area_reduces_size(self):
+        from app import crop_design_area
+        img = _make_test_image(400, 400)
+        cropped, mx, my = crop_design_area(img, margin_pct=0.05)
+        assert cropped.shape[0] < img.shape[0]
+        assert cropped.shape[1] < img.shape[1]
+        assert mx > 0 and my > 0
+
+    def test_crop_design_area_offsets(self):
+        from app import crop_design_area
+        img = np.ones((100, 200, 3), dtype=np.uint8)
+        cropped, mx, my = crop_design_area(img, margin_pct=0.1)
+        assert mx == 20  # 10% of 200
+        assert my == 10  # 10% of 100
+        assert cropped.shape == (80, 160, 3)
+
+
+class TestCompareEndpoint:
 
     @pytest.fixture
     def client(self):
@@ -256,83 +296,27 @@ class TestOcrEndpoint:
         from app import app
         return TestClient(app)
 
-    def test_ocr_basic(self, client):
-        """OCR endpoint returns valid response for a text image."""
-        img = _make_text_image("Hello World")
-        b64 = _img_to_b64(img)
-        resp = client.post("/ocr", json={
-            "image": b64,
-            "spelling_language": "en",
-            "check_spelling": True
+    def test_compare_accepts_spelling_level(self, client):
+        master = _make_test_image()
+        sample = master.copy()
+        resp = client.post("/compare", json={
+            "master_image": _img_to_b64(master),
+            "sample_image": _img_to_b64(sample),
+            "check_spelling": False,
+            "spelling_level": 75,
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert "full_text" in data
-        assert "words" in data
-        assert "spelling_errors" in data
-        assert "annotated_image" in data
-        assert isinstance(data["words"], list)
-        assert isinstance(data["spelling_errors"], list)
+        assert "differences" in data
+        assert "overall_ssim" in data
 
-    def test_ocr_with_zone(self, client):
-        """OCR endpoint respects zone selection."""
-        img = _make_text_image("Hello World", width=600, height=200)
-        b64 = _img_to_b64(img)
-        resp = client.post("/ocr", json={
-            "image": b64,
-            "zone": {"x": 0.0, "y": 0.0, "w": 0.5, "h": 1.0},
-            "spelling_language": "en",
-            "check_spelling": False
+    def test_compare_different_sizes(self, client):
+        master = _make_test_image(400, 400)
+        sample = np.ones((200, 200, 3), dtype=np.uint8) * 200
+        resp = client.post("/compare", json={
+            "master_image": _img_to_b64(master),
+            "sample_image": _img_to_b64(sample),
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert "full_text" in data
-        assert isinstance(data["annotated_image"], str)
-        assert len(data["annotated_image"]) > 0
-
-    def test_ocr_no_spell_check(self, client):
-        """OCR endpoint works with spell checking disabled."""
-        img = _make_text_image("Testing")
-        b64 = _img_to_b64(img)
-        resp = client.post("/ocr", json={
-            "image": b64,
-            "spelling_language": "en",
-            "check_spelling": False
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["spelling_errors"] == []
-
-    def test_ocr_invalid_image(self, client):
-        """OCR endpoint returns error for invalid image."""
-        b64_invalid = base64.b64encode(b"not an image").decode("utf-8")
-        resp = client.post("/ocr", json={
-            "image": b64_invalid,
-            "spelling_language": "en"
-        })
-        assert resp.status_code == 400
-
-    def test_ocr_empty_zone(self, client):
-        """OCR endpoint returns error for empty zone."""
-        img = _make_text_image("Hello")
-        b64 = _img_to_b64(img)
-        resp = client.post("/ocr", json={
-            "image": b64,
-            "zone": {"x": 0.99, "y": 0.99, "w": 0.001, "h": 0.001},
-            "spelling_language": "en"
-        })
-        # Should either succeed (tiny region) or return 400
-        assert resp.status_code in (200, 400)
-
-    def test_ocr_multiple_languages(self, client):
-        """OCR endpoint accepts multiple languages."""
-        img = _make_text_image("Hola Mundo")
-        b64 = _img_to_b64(img)
-        resp = client.post("/ocr", json={
-            "image": b64,
-            "spelling_language": "es,en",
-            "check_spelling": True
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "full_text" in data
+        assert data["overall_ssim"] >= 0

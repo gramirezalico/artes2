@@ -281,6 +281,11 @@ router.post('/:id/start', inspectionRateLimiter, async (req, res, next) => {
       updateFields.spellingLanguage = String(req.body.spellingLanguage);
       inspection.spellingLanguage = String(req.body.spellingLanguage);
     }
+    if (req.body.spellingLevel !== undefined) {
+      const lvl = Math.min(100, Math.max(0, parseInt(req.body.spellingLevel, 10) || 50));
+      updateFields.spellingLevel = lvl;
+      inspection.spellingLevel = lvl;
+    }
     if (Object.keys(updateFields).length > 0) {
       await Inspection.findByIdAndUpdate(inspection._id, updateFields);
     }

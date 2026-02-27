@@ -41,10 +41,10 @@ export async function uploadInspection(formData) {
 
 /** Start the inspection processing. */
 export async function startInspection(inspectionId, opts = {}) {
-  const { inspectionZones = [], checkSpelling = false, spellingLanguage = 'es' } = opts;
+  const { inspectionZones = [], checkSpelling = false, spellingLanguage = 'es', spellingLevel = 50 } = opts;
   return request(`/api/inspection/${inspectionId}/start`, {
     method: 'POST',
-    body: JSON.stringify({ inspectionZones, checkSpelling, spellingLanguage })
+    body: JSON.stringify({ inspectionZones, checkSpelling, spellingLanguage, spellingLevel })
   });
 }
 
