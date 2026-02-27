@@ -3,15 +3,32 @@
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const User = require('../models/User.model');
 
 const router = express.Router();
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+if (!GOOGLE_CLIENT_ID) {
+  console.error('[Auth] GOOGLE_CLIENT_ID is not set. Google authentication will not work.');
+}
+if (!JWT_SECRET) {
+  console.error('[Auth] JWT_SECRET is not set. Authentication will not work.');
+}
+
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// Rate limiter for auth endpoints
+const authRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Espera antes de intentar nuevamente.' }
+});
 
 /**
  * POST /api/auth/google
@@ -19,7 +36,7 @@ const client = new OAuth2Client(GOOGLE_CLIENT_ID);
  *
  * Verifies the Google ID token, upserts the user and returns a JWT.
  */
-router.post('/google', async (req, res, next) => {
+router.post('/google', authRateLimiter, async (req, res, next) => {
   try {
     const { credential } = req.body;
     if (!credential) {
@@ -74,7 +91,7 @@ router.post('/google', async (req, res, next) => {
  * GET /api/auth/me
  * Returns the current user based on the JWT in the Authorization header.
  */
-router.get('/me', (req, res) => {
+router.get('/me', authRateLimiter, (req, res) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autenticado.' });

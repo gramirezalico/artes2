@@ -2,7 +2,11 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('[Auth] JWT_SECRET is not set. Authentication middleware will reject all requests.');
+}
 
 /**
  * Express middleware that verifies a Bearer JWT token.
